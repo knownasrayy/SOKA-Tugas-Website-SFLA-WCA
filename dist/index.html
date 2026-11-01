@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SFLA &amp; WCA | Strategi Optimasi Komputasi Awan</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2309111a'/%3E%3Ccircle cx='24' cy='34' r='13' fill='%231f9d7a'/%3E%3Cpath d='M42 14 C52 28 54 36 42 48 C30 36 32 28 42 14 Z' fill='%232298c7'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="./src/styles/main.css" />
+</head>
+<body data-theme="intro">
+  <div id="app" class="app-shell">
+    <!-- Top Progress & Section Header -->
+    <header class="deck-header" aria-label="Navigasi Bagian Presentasi">
+      <div class="progress-track" role="progressbar" aria-valuemin="1" aria-valuemax="18" aria-valuenow="1" id="progress-bar-container">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+      <div class="header-inner">
+        <div class="brand-pill" id="brand-pill">
+          <span class="brand-dot"></span>
+          <span class="brand-course">Strategi Optimasi Komputasi Awan</span>
+        </div>
+        <nav class="section-tabs" id="section-tabs" aria-label="Lompat ke bagian"></nav>
+        <div class="header-actions">
+          <button type="button" class="icon-btn" id="btn-notes" title="Catatan Presenter (Tekan N)" aria-pressed="false">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+            </svg>
+            <span>Catatan <kbd>N</kbd></span>
+          </button>
+          <button type="button" class="icon-btn" id="btn-help" title="Daftar Pintasan Keyboard (Tekan ?)" aria-expanded="false">
+            <span>Pintasan <kbd>?</kbd></span>
+          </button>
+          <button type="button" class="icon-btn" id="btn-fullscreen" title="Mode Layar Penuh (Tekan F)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <polyline points="15 3 21 3 21 9"></polyline>
+              <polyline points="9 21 3 21 3 15"></polyline>
+              <line x1="21" y1="3" x2="14" y2="10"></line>
+              <line x1="3" y1="21" x2="10" y2="14"></line>
+            </svg>
+            <span>Layar Penuh <kbd>F</kbd></span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Slide Stage -->
+    <main id="slide-stage" class="slide-stage" tabindex="-1" aria-live="polite"></main>
+
+    <!-- Bottom Slide Controls -->
+    <footer class="deck-footer" aria-label="Kontrol Slide">
+      <button type="button" class="nav-btn" id="btn-prev" title="Slide Sebelumnya (Panah Kiri)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true">
+          <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+        <span>Sebelumnya</span>
+      </button>
+
+      <div class="slide-indicator-group">
+        <button type="button" class="slide-counter-btn" id="btn-slide-menu" title="Pilih Slide Secara Langsung">
+          <span id="slide-number-label">1 / 18</span>
+          <span class="slide-title-mini" id="slide-title-mini">Judul</span>
+        </button>
+        <div class="slide-dots" id="slide-dots" role="tablist" aria-label="Indikator Slide"></div>
+      </div>
+
+      <button type="button" class="nav-btn nav-btn-primary" id="btn-next" title="Slide Berikutnya (Panah Kanan / Spasi)">
+        <span>Berikutnya</span>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true">
+          <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+      </button>
+    </footer>
+
+    <!-- Presenter Notes Drawer (F-14) -->
+    <aside id="presenter-notes" class="presenter-drawer hidden" aria-label="Catatan Presenter">
+      <div class="presenter-drawer-header">
+        <div>
+          <span class="badge-tag">Catatan Narasi Presenter</span>
+          <h3 id="notes-slide-title">Catatan Bicara</h3>
+        </div>
+        <button type="button" class="close-btn" id="btn-close-notes" title="Tutup Catatan (N)" aria-label="Tutup Catatan">&times;</button>
+      </div>
+      <div id="notes-content" class="presenter-drawer-body"></div>
+    </aside>
+
+    <!-- Slide Quick Jump Menu -->
+    <div id="slide-jump-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-label="Daftar Slide">
+      <div class="modal-panel">
+        <div class="modal-header">
+          <h3>Daftar Lengkap Slide (1–18)</h3>
+          <button type="button" class="close-btn" id="btn-close-jump" aria-label="Tutup Daftar Slide">&times;</button>
+        </div>
+        <div id="slide-jump-list" class="slide-jump-grid"></div>
+      </div>
+    </div>
+
+    <!-- Keyboard Shortcuts Modal -->
+    <div id="shortcuts-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-label="Pintasan Keyboard">
+      <div class="modal-panel shortcuts-panel">
+        <div class="modal-header">
+          <h3>Pintasan Keyboard Presentasi</h3>
+          <button type="button" class="close-btn" id="btn-close-help" aria-label="Tutup Pintasan">&times;</button>
+        </div>
+        <div class="shortcuts-grid">
+          <div class="shortcut-row"><kbd>→</kbd> / <kbd>Spasi</kbd><span>Slide berikutnya</span></div>
+          <div class="shortcut-row"><kbd>←</kbd><span>Slide sebelumnya</span></div>
+          <div class="shortcut-row"><kbd>Home</kbd> / <kbd>End</kbd><span>Slide pertama / terakhir</span></div>
+          <div class="shortcut-row"><kbd>F</kbd><span>Mode layar penuh (Fullscreen)</span></div>
+          <div class="shortcut-row"><kbd>N</kbd><span>Buka/tutup catatan bicara presenter</span></div>
+          <div class="shortcut-row"><kbd>P</kbd><span>Play / Pause simulasi pada slide aktif</span></div>
+          <div class="shortcut-row"><kbd>S</kbd><span>Step (maju 1 tahap algoritma)</span></div>
+          <div class="shortcut-row"><kbd>R</kbd><span>Reset simulasi ke kondisi awal</span></div>
+          <div class="shortcut-row"><kbd>Esc</kbd><span>Tutup panel atau dialog</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dual-mode Offline Loader: works via file:// double-click AND http(s):// ES Modules -->
+  <script>
+    (function () {
+      var script = document.createElement('script');
+      if (window.location.protocol === 'file:') {
+        script.src = './public/app.bundle.js';
+      } else {
+        script.type = 'module';
+        script.src = './src/main.js';
+      }
+      document.body.appendChild(script);
+    })();
+  </script>
+</body>
+</html>
+

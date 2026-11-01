@@ -1,0 +1,15 @@
+{
+  "name": "sfla-wca-interactive-presentation",
+  "version": "1.0.0",
+  "description": "Website Presentasi Interaktif Algoritma Metaheuristik (SFLA & WCA) untuk Strategi Optimasi Komputasi Awan",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/serve.mjs",
+    "build": "node scripts/build.mjs",
+    "test": "node scripts/run-tests.mjs",
+    "lint:taste": "node .agents/skills/design-taste-frontend/scripts/lint.mjs --app index.html src"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
