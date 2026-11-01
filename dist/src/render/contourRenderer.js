@@ -1,6 +1,6 @@
 /**
  * Renderer Peta Kontur 2D Berperforma Tinggi (Offscreen Bitmap Cache)
- * Mendukung palet 'pond' (SFLA), 'water' (WCA), dan 'terrain' (Umum).
+ * Dikalibrasi dengan Palet Identitas Resmi ITS (Biru ITS, Medical Tosca FKK, Summer Sky FTK, Kuning Tua ITS).
  * Skala piksel seragam (uniform scale) agar jarak Euclidean seperti radius dmax tetap bulat sempurna.
  */
 
@@ -19,39 +19,39 @@ function lerpColor(stops, t) {
 }
 
 const PALETTES = {
-  // Kolam teratai: cekungan terdalam zamrud gelap bercahaya -> tepi kolam lumut hangat
+  // Kolam teratai SFLA: palung Navy ITS (#03132B) menuju cekungan Medical Tosca FKK (#12B0A2) & tepi Biru Cover
   pond: [
-    [3, 46, 42],
-    [6, 78, 64],
-    [13, 108, 92],
-    [17, 75, 68],
-    [25, 58, 48],
-    [44, 66, 38]
+    [3, 19, 43],
+    [8, 46, 72],
+    [13, 86, 98],
+    [18, 112, 108],
+    [22, 68, 92],
+    [32, 54, 96]
   ],
-  // Siklus air: palung laut biru safir -> lereng sian -> punggung pegunungan batu-salju
+  // Siklus air WCA: palung samudra Navy ITS (#03132B) -> Biru Lambang (#127BBE) -> punggung pegunungan Biru Muda
   water: [
-    [3, 35, 68],
-    [7, 74, 122],
-    [14, 105, 142],
-    [22, 68, 98],
-    [38, 62, 86],
-    [76, 98, 122]
+    [2, 15, 38],
+    [10, 44, 92],
+    [18, 92, 152],
+    [25, 72, 124],
+    [35, 63, 124],
+    [62, 92, 138]
   ],
-  // Peta topografi umum untuk pengantar optimasi
+  // Peta topografi umum: gradasi tenang Navy ITS menuju Biru Cover & Tosca dalam agar titik data kontras tajam
   terrain: [
-    [6, 38, 68],
-    [12, 92, 132],
-    [16, 142, 118],
-    [74, 152, 76],
-    [168, 142, 48],
-    [198, 98, 56]
+    [3, 19, 43],
+    [10, 38, 76],
+    [16, 68, 114],
+    [18, 94, 122],
+    [24, 58, 96],
+    [30, 46, 82]
   ]
 };
 
 export function createViewport(width, height, objective, paddingRatio = 0.08) {
   const domainSpan = objective.max - objective.min;
   const usable = Math.min(width, height) * (1 - paddingRatio * 2);
-  const scale = Math.max(1, usable / domainSpan); // piksel per 1 satuan koordinat
+  const scale = Math.max(1, usable / domainSpan);
   const cx = width / 2;
   const cy = height / 2;
   const mid = (objective.min + objective.max) / 2;
@@ -98,13 +98,13 @@ export class ContourMapCache {
 
     ctx.drawImage(this.offscreen, 0, 0, width, height);
 
-    // Gambar batas domain pencarian yang halus
+    // Batas domain pencarian teknis (Biru Muda Lambang ITS #75BDE0)
     const topLeft = vp.worldToScreen(objective.min, objective.max);
     const botRight = vp.worldToScreen(objective.max, objective.min);
     ctx.save();
-    ctx.strokeStyle = 'rgba(226, 232, 240, 0.22)';
-    ctx.lineWidth = 1.25;
-    ctx.setLineDash([6, 6]);
+    ctx.strokeStyle = 'rgba(117, 189, 224, 0.26)';
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([5, 5]);
     ctx.strokeRect(
       topLeft.x,
       topLeft.y,
@@ -113,9 +113,9 @@ export class ContourMapCache {
     );
     ctx.setLineDash([]);
 
-    // Garis sumbu tipis melalui (0,0)
+    // Garis sumbu kartesian melalui (0, 0)
     const origin = vp.worldToScreen(0, 0);
-    ctx.strokeStyle = 'rgba(226, 232, 240, 0.09)';
+    ctx.strokeStyle = 'rgba(117, 189, 224, 0.12)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(topLeft.x, origin.y);
@@ -124,7 +124,18 @@ export class ContourMapCache {
     ctx.lineTo(origin.x, botRight.y);
     ctx.stroke();
 
-    // Tampilkan penanda global optimum jika diaktifkan (PRD Bagian 10)
+    // Label koordinat domain tipis di sudut bawah peta agar tidak bertumpuk dengan HUD atas
+    if (width >= 320) {
+      const labelY = Math.min(botRight.y - 10, height - 10);
+      ctx.font = '600 10px "Plus Jakarta Sans", sans-serif';
+      ctx.fillStyle = 'rgba(184, 197, 217, 0.64)';
+      ctx.textAlign = 'left';
+      ctx.fillText(`min (${objective.min}, ${objective.min})`, topLeft.x + 8, labelY);
+      ctx.textAlign = 'right';
+      ctx.fillText(`max (${objective.max}, ${objective.max})`, botRight.x - 8, labelY);
+    }
+
+    // Penanda Global Optimum (Kuning Tua Logo ITS #FDBB16)
     if (options.showOptimum !== false) {
       const optPos = vp.worldToScreen(objective.optimum.x, objective.optimum.y);
       this.drawOptimumStar(ctx, optPos.x, optPos.y);
@@ -135,7 +146,6 @@ export class ContourMapCache {
   }
 
   buildOffscreen(width, height, objective, paletteName, vp) {
-    // Render pada resolusi 1/2 untuk kecepatan pembentukan awal (< 8ms), lalu haluskan
     const scaleDown = 2;
     const rw = Math.max(2, Math.ceil(width / scaleDown));
     const rh = Math.max(2, Math.ceil(height / scaleDown));
@@ -155,7 +165,6 @@ export class ContourMapCache {
       for (let px = 0; px < rw; px++) {
         const world = vp.screenToWorld((px + 0.5) * scaleDown, (py + 0.5) * scaleDown);
         const raw = objective.evaluate(world.x, world.y);
-        // Kurva gamma lembut agar lembah dekat 0 terlihat jelas konturnya
         const norm = Math.pow(Math.min(1, Math.max(0, raw / maxVal)), 0.58);
         normField[py * rw + px] = norm;
       }
@@ -168,7 +177,6 @@ export class ContourMapCache {
         const n = normField[idx];
         const rgb = lerpColor(stops, n);
 
-        // Deteksi garis kontur (isoline) antar piksel tetangga
         let isContour = false;
         if (px > 0 && py > 0) {
           const bCurr = Math.floor(n * numBands);
@@ -181,9 +189,9 @@ export class ContourMapCache {
 
         const p = idx * 4;
         if (isContour) {
-          data[p] = Math.min(255, rgb[0] + 34);
+          data[p] = Math.min(255, rgb[0] + 30);
           data[p + 1] = Math.min(255, rgb[1] + 42);
-          data[p + 2] = Math.min(255, rgb[2] + 44);
+          data[p + 2] = Math.min(255, rgb[2] + 54);
           data[p + 3] = 255;
         } else {
           data[p] = rgb[0];
@@ -204,17 +212,16 @@ export class ContourMapCache {
     fctx.imageSmoothingQuality = 'high';
     fctx.drawImage(smallCanvas, 0, 0, rw, rh, 0, 0, width, height);
 
-    // Vignette halus di tepi kanvas agar fokus mata ke tengah peta
     const grad = fctx.createRadialGradient(
       width / 2,
       height / 2,
-      Math.min(width, height) * 0.32,
+      Math.min(width, height) * 0.34,
       width / 2,
       height / 2,
-      Math.max(width, height) * 0.72
+      Math.max(width, height) * 0.74
     );
     grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    grad.addColorStop(1, 'rgba(3, 9, 17, 0.48)');
+    grad.addColorStop(1, 'rgba(3, 19, 43, 0.52)');
     fctx.fillStyle = grad;
     fctx.fillRect(0, 0, width, height);
 
@@ -225,20 +232,18 @@ export class ContourMapCache {
     ctx.save();
     ctx.translate(x, y);
 
-    // Lingkaran pendaran target global
-    const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, 22);
-    glow.addColorStop(0, 'rgba(251, 191, 36, 0.75)');
-    glow.addColorStop(1, 'rgba(251, 191, 36, 0)');
+    const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, 20);
+    glow.addColorStop(0, 'rgba(253, 187, 22, 0.72)');
+    glow.addColorStop(1, 'rgba(253, 187, 22, 0)');
     ctx.fillStyle = glow;
     ctx.beginPath();
-    ctx.arc(0, 0, 22, 0, Math.PI * 2);
+    ctx.arc(0, 0, 20, 0, Math.PI * 2);
     ctx.fill();
 
-    // Bintang 5 sudut
     ctx.beginPath();
     const spikes = 5;
-    const outerR = 10;
-    const innerR = 4.5;
+    const outerR = 9.5;
+    const innerR = 4.2;
     for (let i = 0; i < spikes * 2; i++) {
       const r = i % 2 === 0 ? outerR : innerR;
       const angle = (i * Math.PI) / spikes - Math.PI / 2;
@@ -248,9 +253,9 @@ export class ContourMapCache {
       else ctx.lineTo(sx, sy);
     }
     ctx.closePath();
-    ctx.fillStyle = '#fde047';
-    ctx.strokeStyle = '#78350f';
-    ctx.lineWidth = 1.8;
+    ctx.fillStyle = '#fdbb16';
+    ctx.strokeStyle = '#03132b';
+    ctx.lineWidth = 1.6;
     ctx.fill();
     ctx.stroke();
 
@@ -271,4 +276,3 @@ export function syncCanvasSize(canvas) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   return { ctx, width: w, height: h };
 }
-

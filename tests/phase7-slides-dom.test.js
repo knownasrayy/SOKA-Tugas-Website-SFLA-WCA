@@ -3,19 +3,43 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { slides } from '../src/slides/index.js';
+import { tabs } from '../src/tabs/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
 
-test('Struktur deck presentasi memuat tepat 18 slide sesuai PRD Bagian 6', () => {
-  assert.equal(slides.length, 18, `Harus 18 slide, ditemukan ${slides.length}`);
-  for (let i = 0; i < slides.length; i++) {
-    const s = slides[i];
-    assert.ok(s.id, `Slide ${i + 1} wajib memiliki id`);
-    assert.ok(s.title, `Slide ${i + 1} wajib memiliki title`);
-    assert.equal(typeof s.mount, 'function', `Slide ${i + 1} wajib memiliki fungsi mount`);
-    assert.ok(s.notes && s.notes.length > 20, `Slide ${i + 1} wajib memiliki catatan presenter`);
+test('Struktur workspace berbasis 4 tab ITS (bukan slide deck)', () => {
+  assert.equal(tabs.length, 4, `Harus 4 tab utama, ditemukan ${tabs.length}`);
+  const expectedIds = ['konsep', 'sfla', 'wca', 'komparasi'];
+  tabs.forEach((tab, idx) => {
+    assert.equal(tab.id, expectedIds[idx]);
+    assert.ok(tab.label && tab.label.length > 3, `Tab ${tab.id} wajib memiliki label`);
+    assert.ok(tab.title && tab.title.length > 5, `Tab ${tab.id} wajib memiliki title`);
+    assert.equal(typeof tab.mount, 'function', `Tab ${tab.id} wajib memiliki fungsi mount`);
+    assert.ok(tab.notes && tab.notes.length > 20, `Tab ${tab.id} wajib memiliki panduan narasi`);
+  });
+
+  const html = fs.readFileSync(path.join(rootDir, 'index.html'), 'utf8');
+  assert.ok(html.includes('id="workspace-tabs"'), 'Wajib memuat navigasi tab utama');
+  assert.ok(html.includes('role="tablist"'), 'Navigasi tab wajib memiliki role="tablist"');
+  assert.ok(html.includes('id="workspace-stage"'), 'Wajib memuat panggung tab scrollable');
+  assert.ok(!html.includes('deck-footer'), 'Tidak boleh lagi memuat footer navigasi slide');
+  assert.ok(!html.includes('1 / 18'), 'Tidak boleh lagi memuat penghitung slide 1 / 18');
+  assert.ok(!html.includes('slide-dots'), 'Tidak boleh lagi memuat titik-titik slide');
+});
+
+test('Palet warna resmi ITS terpasang pada stylesheet utama', () => {
+  const css = fs.readFileSync(path.join(rootDir, 'src', 'styles', 'main.css'), 'utf8').toLowerCase();
+  const requiredTokens = [
+    '#03132b', // ITS Dark Ground
+    '#127bbe', // ITS Biru Tua Lambang
+    '#243f81', // ITS Biru Cover
+    '#fdbb16', // ITS Kuning Tua Logo
+    '#12b0a2', // ITS FKK Medical Tosca (SFLA)
+    '#26aee4'  // ITS FTK Summer Sky (WCA)
+  ];
+  for (const hex of requiredTokens) {
+    assert.ok(css.includes(hex), `Token warna resmi ITS ${hex} wajib ada di main.css`);
   }
 });
 
@@ -56,8 +80,7 @@ test('Tidak ada dependensi CDN atau URL internet eksternal saat runtime', () => 
   }
 });
 
-test('Seluruh 18 slide berhasil di-mount, me-render Canvas 2D, dan dieksekusi tanpa error runtime', () => {
-  // Buat mock Canvas 2D & elemen DOM ringan untuk menguji seluruh selector & logika render 18 slide
+test('Seluruh 4 tab dan sub-modul interaktif berhasil di-mount, me-render Canvas 2D, dan dieksekusi tanpa error', () => {
   function createMockCtx() {
     return {
       clearRect() {},
@@ -111,10 +134,10 @@ test('Seluruh 18 slide berhasil di-mount, me-render Canvas 2D, dan dieksekusi ta
           toggle: () => false
         },
         setAttribute() {},
-        getBoundingClientRect: () => ({ left: 0, top: 0, width: 960, height: 540 }),
+        getBoundingClientRect: () => ({ left: 0, top: 0, width: 960, height: 480 }),
         getContext: () => createMockCtx(),
         width: 960,
-        height: 540,
+        height: 480,
         addEventListener(type, fn) {
           if (!listeners.has(type)) listeners.set(type, []);
           listeners.get(type).push(fn);
@@ -122,7 +145,7 @@ test('Seluruh 18 slide berhasil di-mount, me-render Canvas 2D, dan dieksekusi ta
         removeEventListener() {},
         click() {
           for (const fn of listeners.get('click') || []) {
-            fn({ target: el, clientX: 480, clientY: 270, preventDefault() {} });
+            fn({ target: el, clientX: 420, clientY: 220, preventDefault() {} });
           }
         },
         querySelector(sel) {
@@ -130,7 +153,6 @@ test('Seluruh 18 slide berhasil di-mount, me-render Canvas 2D, dan dieksekusi ta
           return list[0] || null;
         },
         querySelectorAll(sel) {
-          // Dukung selector umum seperti '#id', '.cls', '#id .cls', '[data-x]'
           const parts = sel.trim().split(/\s+/);
           const leaf = parts[parts.length - 1];
           if (leaf.startsWith('#')) {
@@ -143,12 +165,13 @@ test('Seluruh 18 slide berhasil di-mount, me-render Canvas 2D, dan dieksekusi ta
           }
           const attrMatch = leaf.match(/^\[data-([a-z0-9-]+)\]$/i);
           if (attrMatch) {
-            const key = attrMatch[1];
-            return allElements.filter((x) => key in x.dataset);
+            const camel = attrMatch[1].replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+            return allElements.filter((x) => camel in x.dataset);
           }
           return [];
         }
       };
+
       Object.defineProperty(el, 'innerHTML', {
         get: () => el._innerHTML,
         set: (val) => {
@@ -161,7 +184,6 @@ test('Seluruh 18 slide berhasil di-mount, me-render Canvas 2D, dan dieksekusi ta
       return el;
     }
 
-    // Ekstrak seluruh tag pembuka HTML beserta id, class, value, checked, selected, dan data-*
     const tagRegex = /<([a-zA-Z0-9]+)\b([^>]*)>/g;
     let match;
     let lastSelectEl = null;
@@ -211,6 +233,7 @@ test('Seluruh 18 slide berhasil di-mount, me-render Canvas 2D, dan dieksekusi ta
     devicePixelRatio: 1,
     addEventListener() {},
     removeEventListener() {},
+    scrollTo() {},
     matchMedia: () => ({ matches: false })
   };
   globalThis.localStorage = {
@@ -229,27 +252,35 @@ test('Seluruh 18 slide berhasil di-mount, me-render Canvas 2D, dan dieksekusi ta
   };
   globalThis.cancelAnimationFrame = () => {};
 
-  for (let idx = 0; idx < slides.length; idx++) {
-    const slide = slides[idx];
+  for (const tab of tabs) {
     const { makeEl } = parseHtmlElements('');
     const container = makeEl('SECTION');
     let hooks = null;
 
-    const cleanup = slide.mount(container, {
-      deck: { next() {}, prev() {}, goTo() {} },
+    const cleanup = tab.mount(container, {
+      workspace: { goToTab() {} },
       reducedMotion: false,
       registerHooks: (h) => {
         hooks = h;
       }
     });
 
-    // Eksekusi frame animasi yang terjadwal pada slide ini
     const pending = rafQueue.splice(0, rafQueue.length);
     for (const cb of pending) {
       cb(performance.now() + 120);
     }
 
-    // Jika slide memiliki simulasi (SFLA, WCA, Perbandingan, Cloud), uji tombol Step & Reset!
+    // Uji klik seluruh sub-tab dan tombol skenario di dalam tab
+    for (const subBtn of container.querySelectorAll('[data-sub]')) {
+      subBtn.click();
+    }
+    for (const leapBtn of container.querySelectorAll('[data-leap]')) {
+      leapBtn.click();
+    }
+    for (const flowBtn of container.querySelectorAll('[data-flow]')) {
+      flowBtn.click();
+    }
+
     if (hooks) {
       hooks.step();
       hooks.step();

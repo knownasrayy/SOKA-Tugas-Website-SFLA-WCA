@@ -1,137 +1,84 @@
 /**
- * Navigasi & Pengelola Deck Presentasi (F-01, F-02, F-14)
- * Menangani perpindahan 18 slide, shortcut keyboard, mode layar penuh, dan catatan presenter.
+ * Pengelola Navigasi 4-Tab Workspace ITS
+ * Menangani perpindahan antar tab modul (#konsep, #sfla, #wca, #komparasi),
+ * pintasan keyboard laboratorium (1-4, P, S, R, N, F, ?), dan pembersihan loop Canvas 2D.
  */
 
-const SECTIONS = [
-  { id: 'intro', label: 'Pengantar', startSlide: 0, endSlide: 2 },
-  { id: 'sfla', label: 'SFLA (Katak)', startSlide: 3, endSlide: 8 },
-  { id: 'wca', label: 'WCA (Siklus Air)', startSlide: 9, endSlide: 14 },
-  { id: 'compare', label: 'Perbandingan', startSlide: 15, endSlide: 15 },
-  { id: 'cloud', label: 'Cloud VM', startSlide: 16, endSlide: 16 },
-  { id: 'outro', label: 'Kesimpulan', startSlide: 17, endSlide: 17 }
-];
-
-export class DeckController {
-  constructor(slides) {
-    this.slides = slides;
+export class WorkspaceController {
+  constructor(tabs) {
+    this.tabs = tabs;
     this.currentIndex = 0;
     this.activeCleanup = null;
-    this.activeHooks = null; // { togglePlay, step, reset } untuk shortcut P / S / R
+    this.activeHooks = null;
     this.notesOpen = false;
     this.reducedMotion = window.matchMedia
       ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
       : false;
 
-    this.stageEl = document.getElementById('slide-stage');
-    this.progressFill = document.getElementById('progress-fill');
-    this.progressContainer = document.getElementById('progress-bar-container');
-    this.slideNumberLabel = document.getElementById('slide-number-label');
-    this.slideTitleMini = document.getElementById('slide-title-mini');
-    this.dotsContainer = document.getElementById('slide-dots');
-    this.sectionTabsEl = document.getElementById('section-tabs');
-
-    this.btnPrev = document.getElementById('btn-prev');
-    this.btnNext = document.getElementById('btn-next');
+    this.stageEl = document.getElementById('workspace-stage');
+    this.tabsNavEl = document.getElementById('workspace-tabs');
     this.btnNotes = document.getElementById('btn-notes');
     this.btnFullscreen = document.getElementById('btn-fullscreen');
     this.btnHelp = document.getElementById('btn-help');
-    this.btnSlideMenu = document.getElementById('btn-slide-menu');
 
     this.notesDrawer = document.getElementById('presenter-notes');
-    this.notesTitle = document.getElementById('notes-slide-title');
+    this.notesTitle = document.getElementById('notes-tab-title');
     this.notesContent = document.getElementById('notes-content');
-    this.jumpModal = document.getElementById('slide-jump-modal');
-    this.jumpList = document.getElementById('slide-jump-list');
     this.shortcutsModal = document.getElementById('shortcuts-modal');
   }
 
   init() {
-    this.buildSectionTabs();
-    this.buildDots();
-    this.buildJumpMenu();
+    this.buildTabButtons();
     this.bindEvents();
 
-    // Pulihkan nomor slide dari hash URL jika tersedia (#slide-9)
-    const hashMatch = window.location.hash.match(/^#slide-(\d+)$/);
-    const startIdx = hashMatch
-      ? Math.max(0, Math.min(this.slides.length - 1, Number(hashMatch[1]) - 1))
-      : 0;
-
-    this.goTo(startIdx, false);
+    const hashId = window.location.hash.replace(/^#/, '').trim().toLowerCase();
+    const matchedIdx = this.tabs.findIndex((t) => t.id === hashId);
+    this.activateTab(matchedIdx >= 0 ? matchedIdx : 0, false);
   }
 
-  buildSectionTabs() {
-    this.sectionTabsEl.innerHTML = '';
-    SECTIONS.forEach((sec) => {
+  buildTabButtons() {
+    if (!this.tabsNavEl) return;
+    this.tabsNavEl.innerHTML = '';
+
+    this.tabs.forEach((tab, idx) => {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'section-tab';
-      btn.dataset.section = sec.id;
-      btn.textContent = sec.label;
-      btn.addEventListener('click', () => this.goTo(sec.startSlide));
-      this.sectionTabsEl.appendChild(btn);
-    });
-  }
-
-  buildDots() {
-    this.dotsContainer.innerHTML = '';
-    this.slides.forEach((slide, idx) => {
-      const dot = document.createElement('button');
-      dot.type = 'button';
-      dot.className = 'slide-dot';
-      dot.title = `${idx + 1}. ${slide.shortTitle || slide.title}`;
-      dot.setAttribute('aria-label', `Slide ${idx + 1}: ${slide.shortTitle || slide.title}`);
-      dot.addEventListener('click', () => this.goTo(idx));
-      this.dotsContainer.appendChild(dot);
-    });
-  }
-
-  buildJumpMenu() {
-    this.jumpList.innerHTML = '';
-    this.slides.forEach((slide, idx) => {
-      const item = document.createElement('button');
-      item.type = 'button';
-      item.className = 'jump-item';
-      item.innerHTML = `<span class="jump-num">${idx + 1}.</span><span>${slide.shortTitle || slide.title}</span>`;
-      item.addEventListener('click', () => {
-        this.jumpModal.classList.add('hidden');
-        this.goTo(idx);
-      });
-      this.jumpList.appendChild(item);
+      btn.className = 'workspace-tab';
+      btn.setAttribute('data-ui', '');
+      btn.setAttribute('role', 'tab');
+      btn.id = `tab-btn-${tab.id}`;
+      btn.dataset.tabId = tab.id;
+      btn.setAttribute('aria-selected', idx === 0 ? 'true' : 'false');
+      btn.innerHTML = `<span>${tab.label}</span><span class="tab-key">[${idx + 1}]</span>`;
+      btn.addEventListener('click', () => this.activateTab(idx));
+      this.tabsNavEl.appendChild(btn);
     });
   }
 
   bindEvents() {
-    this.btnPrev.addEventListener('click', () => this.prev());
-    this.btnNext.addEventListener('click', () => this.next());
+    this.btnNotes?.addEventListener('click', () => this.toggleNotes());
+    document.getElementById('btn-close-notes')?.addEventListener('click', () => this.toggleNotes(false));
 
-    this.btnNotes.addEventListener('click', () => this.toggleNotes());
-    document.getElementById('btn-close-notes').addEventListener('click', () => this.toggleNotes(false));
+    this.btnFullscreen?.addEventListener('click', () => this.toggleFullscreen());
 
-    this.btnFullscreen.addEventListener('click', () => this.toggleFullscreen());
-
-    this.btnSlideMenu.addEventListener('click', () => {
-      this.jumpModal.classList.toggle('hidden');
+    this.btnHelp?.addEventListener('click', () => {
+      this.shortcutsModal?.classList.toggle('hidden');
     });
-    document.getElementById('btn-close-jump').addEventListener('click', () => {
-      this.jumpModal.classList.add('hidden');
+    document.getElementById('btn-close-help')?.addEventListener('click', () => {
+      this.shortcutsModal?.classList.add('hidden');
     });
-    this.jumpModal.addEventListener('click', (e) => {
-      if (e.target === this.jumpModal) this.jumpModal.classList.add('hidden');
-    });
-
-    this.btnHelp.addEventListener('click', () => {
-      this.shortcutsModal.classList.toggle('hidden');
-    });
-    document.getElementById('btn-close-help').addEventListener('click', () => {
-      this.shortcutsModal.classList.add('hidden');
-    });
-    this.shortcutsModal.addEventListener('click', (e) => {
+    this.shortcutsModal?.addEventListener('click', (e) => {
       if (e.target === this.shortcutsModal) this.shortcutsModal.classList.add('hidden');
     });
 
     window.addEventListener('keydown', (e) => this.handleKeydown(e));
+    window.addEventListener('hashchange', () => {
+      const hashId = window.location.hash.replace(/^#/, '').trim().toLowerCase();
+      const idx = this.tabs.findIndex((t) => t.id === hashId);
+      if (idx >= 0 && idx !== this.currentIndex) {
+        this.activateTab(idx, false);
+      }
+    });
   }
 
   isInteractiveElement(el) {
@@ -146,31 +93,19 @@ export class DeckController {
     if (e.ctrlKey || e.altKey || e.metaKey) return;
 
     if (e.key === 'Escape') {
-      this.jumpModal.classList.add('hidden');
-      this.shortcutsModal.classList.add('hidden');
+      this.shortcutsModal?.classList.add('hidden');
       if (this.notesOpen) this.toggleNotes(false);
       return;
     }
 
     if (this.isInteractiveElement(e.target)) return;
 
-    const tag = e.target ? e.target.tagName : '';
-
-    if (e.key === 'ArrowRight' || e.key === 'PageDown') {
-      e.preventDefault();
-      this.next();
-    } else if (e.key === ' ' && tag !== 'BUTTON') {
-      e.preventDefault();
-      this.next();
-    } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
-      e.preventDefault();
-      this.prev();
-    } else if (e.key === 'Home') {
-      e.preventDefault();
-      this.goTo(0);
-    } else if (e.key === 'End') {
-      e.preventDefault();
-      this.goTo(this.slides.length - 1);
+    if (e.key >= '1' && e.key <= '4') {
+      const targetIdx = Number(e.key) - 1;
+      if (targetIdx < this.tabs.length) {
+        e.preventDefault();
+        this.activateTab(targetIdx);
+      }
     } else if (e.key === 'f' || e.key === 'F') {
       e.preventDefault();
       this.toggleFullscreen();
@@ -179,7 +114,7 @@ export class DeckController {
       this.toggleNotes();
     } else if (e.key === '?' || e.key === 'h' || e.key === 'H') {
       e.preventDefault();
-      this.shortcutsModal.classList.toggle('hidden');
+      this.shortcutsModal?.classList.toggle('hidden');
     } else if ((e.key === 'p' || e.key === 'P') && this.activeHooks?.togglePlay) {
       e.preventDefault();
       this.activeHooks.togglePlay();
@@ -194,8 +129,8 @@ export class DeckController {
 
   toggleNotes(forceState) {
     this.notesOpen = typeof forceState === 'boolean' ? forceState : !this.notesOpen;
-    this.notesDrawer.classList.toggle('hidden', !this.notesOpen);
-    this.btnNotes.setAttribute('aria-pressed', String(this.notesOpen));
+    this.notesDrawer?.classList.toggle('hidden', !this.notesOpen);
+    this.btnNotes?.setAttribute('aria-pressed', String(this.notesOpen));
   }
 
   toggleFullscreen() {
@@ -206,20 +141,17 @@ export class DeckController {
     }
   }
 
-  next() {
-    if (this.currentIndex < this.slides.length - 1) {
-      this.goTo(this.currentIndex + 1);
+  goToTab(idOrIndex) {
+    if (typeof idOrIndex === 'string') {
+      const idx = this.tabs.findIndex((t) => t.id === idOrIndex);
+      if (idx >= 0) this.activateTab(idx);
+    } else if (typeof idOrIndex === 'number') {
+      this.activateTab(idOrIndex);
     }
   }
 
-  prev() {
-    if (this.currentIndex > 0) {
-      this.goTo(this.currentIndex - 1);
-    }
-  }
-
-  goTo(index, updateHash = true) {
-    if (index < 0 || index >= this.slides.length) return;
+  activateTab(index, updateHash = true) {
+    if (index < 0 || index >= this.tabs.length) return;
 
     if (typeof this.activeCleanup === 'function') {
       try {
@@ -232,69 +164,59 @@ export class DeckController {
     this.activeHooks = null;
 
     this.currentIndex = index;
-    const slide = this.slides[index];
+    const tab = this.tabs[index];
 
-    document.body.dataset.theme = slide.theme || 'intro';
-    this.stageEl.innerHTML = '';
+    document.body.dataset.module = tab.id;
+    if (this.stageEl) {
+      this.stageEl.innerHTML = '';
 
-    const frame = document.createElement('section');
-    frame.className = 'slide-frame';
-    frame.setAttribute('aria-label', slide.title);
-    this.stageEl.appendChild(frame);
+      const panel = document.createElement('section');
+      panel.className = 'tab-view';
+      panel.id = `tabpanel-${tab.id}`;
+      panel.setAttribute('role', 'tabpanel');
+      panel.setAttribute('aria-labelledby', `tab-btn-${tab.id}`);
+      this.stageEl.appendChild(panel);
 
-    const mountResult = slide.mount(frame, {
-      deck: this,
-      reducedMotion: this.reducedMotion,
-      registerHooks: (hooks) => {
-        this.activeHooks = hooks;
+      const mountResult = tab.mount(panel, {
+        workspace: this,
+        reducedMotion: this.reducedMotion,
+        registerHooks: (hooks) => {
+          this.activeHooks = hooks;
+        }
+      });
+
+      if (typeof mountResult === 'function') {
+        this.activeCleanup = mountResult;
+      } else if (mountResult && typeof mountResult.cleanup === 'function') {
+        this.activeCleanup = mountResult.cleanup;
       }
-    });
-
-    if (typeof mountResult === 'function') {
-      this.activeCleanup = mountResult;
-    } else if (mountResult && typeof mountResult.cleanup === 'function') {
-      this.activeCleanup = mountResult.cleanup;
     }
 
-    // Update UI indicators
-    const total = this.slides.length;
-    const pct = ((index + 1) / total) * 100;
-    this.progressFill.style.width = `${pct.toFixed(2)}%`;
-    this.progressContainer.setAttribute('aria-valuenow', String(index + 1));
-    this.progressContainer.setAttribute('aria-valuemax', String(total));
+    if (this.tabsNavEl) {
+      Array.from(this.tabsNavEl.children).forEach((btn, i) => {
+        btn.setAttribute('aria-selected', i === index ? 'true' : 'false');
+      });
+    }
 
-    this.slideNumberLabel.textContent = `${index + 1} / ${total}`;
-    this.slideTitleMini.textContent = slide.shortTitle || slide.title;
+    if (this.notesTitle) {
+      this.notesTitle.textContent = tab.title;
+    }
+    if (this.notesContent) {
+      this.notesContent.innerHTML = tab.notes || '<p>Gunakan kontrol interaktif untuk mendemonstrasikan perilaku algoritma.</p>';
+    }
 
-    this.btnPrev.disabled = index === 0;
-    this.btnNext.disabled = index === total - 1;
-
-    Array.from(this.dotsContainer.children).forEach((dot, i) => {
-      dot.classList.toggle('active', i === index);
-    });
-
-    Array.from(this.jumpList.children).forEach((item, i) => {
-      item.classList.toggle('active', i === index);
-    });
-
-    SECTIONS.forEach((sec) => {
-      const tab = this.sectionTabsEl.querySelector(`[data-section="${sec.id}"]`);
-      if (tab) {
-        tab.classList.toggle('active', index >= sec.startSlide && index <= sec.endSlide);
-      }
-    });
-
-    // Update presenter notes
-    this.notesTitle.textContent = `Slide ${index + 1}: ${slide.shortTitle || slide.title}`;
-    this.notesContent.innerHTML = slide.notes || '<p>Sampaikan poin utama visual pada layar.</p>';
+    if (typeof window.scrollTo === 'function') {
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    }
 
     if (updateHash) {
       try {
-        window.history.replaceState(null, '', `#slide-${index + 1}`);
+        window.history.replaceState(null, '', `#${tab.id}`);
       } catch (_e) {
-        // Ignore history restrictions on strict file:// environments
+        // Ignore file:// history restrictions
       }
     }
   }
 }
 
+export { WorkspaceController as DeckController };

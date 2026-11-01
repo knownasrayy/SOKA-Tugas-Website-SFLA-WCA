@@ -1,0 +1,41 @@
+{
+  "projectId": "11288588710972324877",
+  "projectName": "projects/11288588710972324877",
+  "title": "Brand PRD UI Design — ITS Metaheuristic Cloud Computing Interface",
+  "designSystem": {
+    "id": "66814ab3c1ab4a94ab1c9fd0737ecce8",
+    "resourceName": "assets/66814ab3c1ab4a94ab1c9fd0737ecce8",
+    "displayName": "ITS Metaheuristic Cloud Computing Interface"
+  },
+  "screens": {
+    "konsep": {
+      "id": "3311d202ac944dc09d35cc4fe5132a70",
+      "resourceName": "projects/11288588710972324877/screens/3311d202ac944dc09d35cc4fe5132a70",
+      "title": "Konsep & Lanskap (Judul & Konsep Optimasi)",
+      "width": 1440,
+      "height": 900
+    },
+    "sfla": {
+      "id": "00cd99ba1ad044d094ec8585e625ccb3",
+      "resourceName": "projects/11288588710972324877/screens/00cd99ba1ad044d094ec8585e625ccb3",
+      "title": "Simulasi SFLA (Kolam Teratai)",
+      "width": 1440,
+      "height": 900
+    },
+    "wca": {
+      "id": "6a8e2048925143e6ad7dc4e79a5ce4c3",
+      "resourceName": "projects/11288588710972324877/screens/6a8e2048925143e6ad7dc4e79a5ce4c3",
+      "title": "Simulasi WCA (Siklus Air)",
+      "width": 1440,
+      "height": 900
+    },
+    "komparasi": {
+      "id": "d7d830f4929d4136a07fea0fef732c64",
+      "resourceName": "projects/11288588710972324877/screens/d7d830f4929d4136a07fea0fef732c64",
+      "title": "Komparasi & Cloud VM",
+      "width": 1440,
+      "height": 900
+    }
+  }
+}
+

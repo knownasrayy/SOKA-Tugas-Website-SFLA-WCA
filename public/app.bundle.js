@@ -12,10 +12,9 @@
   __require("main.js");
 })({
   "main.js": function(exports, __require) {
-const {  DeckController  } = __require("ui/navigation.js");
-const {  slides  } = __require("slides/index.js");
+const {  WorkspaceController  } = __require("ui/navigation.js");
+const {  tabs  } = __require("tabs/index.js");
 
-// Polyfill ringan CanvasRenderingContext2D.roundRect untuk kompatibilitas proyektor/browser lama
 if (
   typeof CanvasRenderingContext2D !== 'undefined' &&
   !CanvasRenderingContext2D.prototype.roundRect
@@ -33,9 +32,9 @@ if (
 }
 
 function bootstrap() {
-  const deck = new DeckController(slides);
-  deck.init();
-  window.__SFLA_WCA_DECK__ = deck;
+  const workspace = new WorkspaceController(tabs);
+  workspace.init();
+  window.__SFLA_WCA_WORKSPACE__ = workspace;
 }
 
 if (document.readyState === 'loading') {
@@ -48,138 +47,85 @@ if (document.readyState === 'loading') {
   },
   "ui/navigation.js": function(exports, __require) {
 /**
- * Navigasi & Pengelola Deck Presentasi (F-01, F-02, F-14)
- * Menangani perpindahan 18 slide, shortcut keyboard, mode layar penuh, dan catatan presenter.
+ * Pengelola Navigasi 4-Tab Workspace ITS
+ * Menangani perpindahan antar tab modul (#konsep, #sfla, #wca, #komparasi),
+ * pintasan keyboard laboratorium (1-4, P, S, R, N, F, ?), dan pembersihan loop Canvas 2D.
  */
-
-const SECTIONS = [
-  { id: 'intro', label: 'Pengantar', startSlide: 0, endSlide: 2 },
-  { id: 'sfla', label: 'SFLA (Katak)', startSlide: 3, endSlide: 8 },
-  { id: 'wca', label: 'WCA (Siklus Air)', startSlide: 9, endSlide: 14 },
-  { id: 'compare', label: 'Perbandingan', startSlide: 15, endSlide: 15 },
-  { id: 'cloud', label: 'Cloud VM', startSlide: 16, endSlide: 16 },
-  { id: 'outro', label: 'Kesimpulan', startSlide: 17, endSlide: 17 }
-];
-class DeckController {
-  constructor(slides) {
-    this.slides = slides;
+class WorkspaceController {
+  constructor(tabs) {
+    this.tabs = tabs;
     this.currentIndex = 0;
     this.activeCleanup = null;
-    this.activeHooks = null; // { togglePlay, step, reset } untuk shortcut P / S / R
+    this.activeHooks = null;
     this.notesOpen = false;
     this.reducedMotion = window.matchMedia
       ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
       : false;
 
-    this.stageEl = document.getElementById('slide-stage');
-    this.progressFill = document.getElementById('progress-fill');
-    this.progressContainer = document.getElementById('progress-bar-container');
-    this.slideNumberLabel = document.getElementById('slide-number-label');
-    this.slideTitleMini = document.getElementById('slide-title-mini');
-    this.dotsContainer = document.getElementById('slide-dots');
-    this.sectionTabsEl = document.getElementById('section-tabs');
-
-    this.btnPrev = document.getElementById('btn-prev');
-    this.btnNext = document.getElementById('btn-next');
+    this.stageEl = document.getElementById('workspace-stage');
+    this.tabsNavEl = document.getElementById('workspace-tabs');
     this.btnNotes = document.getElementById('btn-notes');
     this.btnFullscreen = document.getElementById('btn-fullscreen');
     this.btnHelp = document.getElementById('btn-help');
-    this.btnSlideMenu = document.getElementById('btn-slide-menu');
 
     this.notesDrawer = document.getElementById('presenter-notes');
-    this.notesTitle = document.getElementById('notes-slide-title');
+    this.notesTitle = document.getElementById('notes-tab-title');
     this.notesContent = document.getElementById('notes-content');
-    this.jumpModal = document.getElementById('slide-jump-modal');
-    this.jumpList = document.getElementById('slide-jump-list');
     this.shortcutsModal = document.getElementById('shortcuts-modal');
   }
 
   init() {
-    this.buildSectionTabs();
-    this.buildDots();
-    this.buildJumpMenu();
+    this.buildTabButtons();
     this.bindEvents();
 
-    // Pulihkan nomor slide dari hash URL jika tersedia (#slide-9)
-    const hashMatch = window.location.hash.match(/^#slide-(\d+)$/);
-    const startIdx = hashMatch
-      ? Math.max(0, Math.min(this.slides.length - 1, Number(hashMatch[1]) - 1))
-      : 0;
-
-    this.goTo(startIdx, false);
+    const hashId = window.location.hash.replace(/^#/, '').trim().toLowerCase();
+    const matchedIdx = this.tabs.findIndex((t) => t.id === hashId);
+    this.activateTab(matchedIdx >= 0 ? matchedIdx : 0, false);
   }
 
-  buildSectionTabs() {
-    this.sectionTabsEl.innerHTML = '';
-    SECTIONS.forEach((sec) => {
+  buildTabButtons() {
+    if (!this.tabsNavEl) return;
+    this.tabsNavEl.innerHTML = '';
+
+    this.tabs.forEach((tab, idx) => {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'section-tab';
-      btn.dataset.section = sec.id;
-      btn.textContent = sec.label;
-      btn.addEventListener('click', () => this.goTo(sec.startSlide));
-      this.sectionTabsEl.appendChild(btn);
-    });
-  }
-
-  buildDots() {
-    this.dotsContainer.innerHTML = '';
-    this.slides.forEach((slide, idx) => {
-      const dot = document.createElement('button');
-      dot.type = 'button';
-      dot.className = 'slide-dot';
-      dot.title = `${idx + 1}. ${slide.shortTitle || slide.title}`;
-      dot.setAttribute('aria-label', `Slide ${idx + 1}: ${slide.shortTitle || slide.title}`);
-      dot.addEventListener('click', () => this.goTo(idx));
-      this.dotsContainer.appendChild(dot);
-    });
-  }
-
-  buildJumpMenu() {
-    this.jumpList.innerHTML = '';
-    this.slides.forEach((slide, idx) => {
-      const item = document.createElement('button');
-      item.type = 'button';
-      item.className = 'jump-item';
-      item.innerHTML = `<span class="jump-num">${idx + 1}.</span><span>${slide.shortTitle || slide.title}</span>`;
-      item.addEventListener('click', () => {
-        this.jumpModal.classList.add('hidden');
-        this.goTo(idx);
-      });
-      this.jumpList.appendChild(item);
+      btn.className = 'workspace-tab';
+      btn.setAttribute('data-ui', '');
+      btn.setAttribute('role', 'tab');
+      btn.id = `tab-btn-${tab.id}`;
+      btn.dataset.tabId = tab.id;
+      btn.setAttribute('aria-selected', idx === 0 ? 'true' : 'false');
+      btn.innerHTML = `<span>${tab.label}</span><span class="tab-key">[${idx + 1}]</span>`;
+      btn.addEventListener('click', () => this.activateTab(idx));
+      this.tabsNavEl.appendChild(btn);
     });
   }
 
   bindEvents() {
-    this.btnPrev.addEventListener('click', () => this.prev());
-    this.btnNext.addEventListener('click', () => this.next());
+    this.btnNotes?.addEventListener('click', () => this.toggleNotes());
+    document.getElementById('btn-close-notes')?.addEventListener('click', () => this.toggleNotes(false));
 
-    this.btnNotes.addEventListener('click', () => this.toggleNotes());
-    document.getElementById('btn-close-notes').addEventListener('click', () => this.toggleNotes(false));
+    this.btnFullscreen?.addEventListener('click', () => this.toggleFullscreen());
 
-    this.btnFullscreen.addEventListener('click', () => this.toggleFullscreen());
-
-    this.btnSlideMenu.addEventListener('click', () => {
-      this.jumpModal.classList.toggle('hidden');
+    this.btnHelp?.addEventListener('click', () => {
+      this.shortcutsModal?.classList.toggle('hidden');
     });
-    document.getElementById('btn-close-jump').addEventListener('click', () => {
-      this.jumpModal.classList.add('hidden');
+    document.getElementById('btn-close-help')?.addEventListener('click', () => {
+      this.shortcutsModal?.classList.add('hidden');
     });
-    this.jumpModal.addEventListener('click', (e) => {
-      if (e.target === this.jumpModal) this.jumpModal.classList.add('hidden');
-    });
-
-    this.btnHelp.addEventListener('click', () => {
-      this.shortcutsModal.classList.toggle('hidden');
-    });
-    document.getElementById('btn-close-help').addEventListener('click', () => {
-      this.shortcutsModal.classList.add('hidden');
-    });
-    this.shortcutsModal.addEventListener('click', (e) => {
+    this.shortcutsModal?.addEventListener('click', (e) => {
       if (e.target === this.shortcutsModal) this.shortcutsModal.classList.add('hidden');
     });
 
     window.addEventListener('keydown', (e) => this.handleKeydown(e));
+    window.addEventListener('hashchange', () => {
+      const hashId = window.location.hash.replace(/^#/, '').trim().toLowerCase();
+      const idx = this.tabs.findIndex((t) => t.id === hashId);
+      if (idx >= 0 && idx !== this.currentIndex) {
+        this.activateTab(idx, false);
+      }
+    });
   }
 
   isInteractiveElement(el) {
@@ -194,31 +140,19 @@ class DeckController {
     if (e.ctrlKey || e.altKey || e.metaKey) return;
 
     if (e.key === 'Escape') {
-      this.jumpModal.classList.add('hidden');
-      this.shortcutsModal.classList.add('hidden');
+      this.shortcutsModal?.classList.add('hidden');
       if (this.notesOpen) this.toggleNotes(false);
       return;
     }
 
     if (this.isInteractiveElement(e.target)) return;
 
-    const tag = e.target ? e.target.tagName : '';
-
-    if (e.key === 'ArrowRight' || e.key === 'PageDown') {
-      e.preventDefault();
-      this.next();
-    } else if (e.key === ' ' && tag !== 'BUTTON') {
-      e.preventDefault();
-      this.next();
-    } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
-      e.preventDefault();
-      this.prev();
-    } else if (e.key === 'Home') {
-      e.preventDefault();
-      this.goTo(0);
-    } else if (e.key === 'End') {
-      e.preventDefault();
-      this.goTo(this.slides.length - 1);
+    if (e.key >= '1' && e.key <= '4') {
+      const targetIdx = Number(e.key) - 1;
+      if (targetIdx < this.tabs.length) {
+        e.preventDefault();
+        this.activateTab(targetIdx);
+      }
     } else if (e.key === 'f' || e.key === 'F') {
       e.preventDefault();
       this.toggleFullscreen();
@@ -227,7 +161,7 @@ class DeckController {
       this.toggleNotes();
     } else if (e.key === '?' || e.key === 'h' || e.key === 'H') {
       e.preventDefault();
-      this.shortcutsModal.classList.toggle('hidden');
+      this.shortcutsModal?.classList.toggle('hidden');
     } else if ((e.key === 'p' || e.key === 'P') && this.activeHooks?.togglePlay) {
       e.preventDefault();
       this.activeHooks.togglePlay();
@@ -242,8 +176,8 @@ class DeckController {
 
   toggleNotes(forceState) {
     this.notesOpen = typeof forceState === 'boolean' ? forceState : !this.notesOpen;
-    this.notesDrawer.classList.toggle('hidden', !this.notesOpen);
-    this.btnNotes.setAttribute('aria-pressed', String(this.notesOpen));
+    this.notesDrawer?.classList.toggle('hidden', !this.notesOpen);
+    this.btnNotes?.setAttribute('aria-pressed', String(this.notesOpen));
   }
 
   toggleFullscreen() {
@@ -254,20 +188,17 @@ class DeckController {
     }
   }
 
-  next() {
-    if (this.currentIndex < this.slides.length - 1) {
-      this.goTo(this.currentIndex + 1);
+  goToTab(idOrIndex) {
+    if (typeof idOrIndex === 'string') {
+      const idx = this.tabs.findIndex((t) => t.id === idOrIndex);
+      if (idx >= 0) this.activateTab(idx);
+    } else if (typeof idOrIndex === 'number') {
+      this.activateTab(idOrIndex);
     }
   }
 
-  prev() {
-    if (this.currentIndex > 0) {
-      this.goTo(this.currentIndex - 1);
-    }
-  }
-
-  goTo(index, updateHash = true) {
-    if (index < 0 || index >= this.slides.length) return;
+  activateTab(index, updateHash = true) {
+    if (index < 0 || index >= this.tabs.length) return;
 
     if (typeof this.activeCleanup === 'function') {
       try {
@@ -280,609 +211,643 @@ class DeckController {
     this.activeHooks = null;
 
     this.currentIndex = index;
-    const slide = this.slides[index];
+    const tab = this.tabs[index];
 
-    document.body.dataset.theme = slide.theme || 'intro';
-    this.stageEl.innerHTML = '';
+    document.body.dataset.module = tab.id;
+    if (this.stageEl) {
+      this.stageEl.innerHTML = '';
 
-    const frame = document.createElement('section');
-    frame.className = 'slide-frame';
-    frame.setAttribute('aria-label', slide.title);
-    this.stageEl.appendChild(frame);
+      const panel = document.createElement('section');
+      panel.className = 'tab-view';
+      panel.id = `tabpanel-${tab.id}`;
+      panel.setAttribute('role', 'tabpanel');
+      panel.setAttribute('aria-labelledby', `tab-btn-${tab.id}`);
+      this.stageEl.appendChild(panel);
 
-    const mountResult = slide.mount(frame, {
-      deck: this,
-      reducedMotion: this.reducedMotion,
-      registerHooks: (hooks) => {
-        this.activeHooks = hooks;
+      const mountResult = tab.mount(panel, {
+        workspace: this,
+        reducedMotion: this.reducedMotion,
+        registerHooks: (hooks) => {
+          this.activeHooks = hooks;
+        }
+      });
+
+      if (typeof mountResult === 'function') {
+        this.activeCleanup = mountResult;
+      } else if (mountResult && typeof mountResult.cleanup === 'function') {
+        this.activeCleanup = mountResult.cleanup;
       }
-    });
-
-    if (typeof mountResult === 'function') {
-      this.activeCleanup = mountResult;
-    } else if (mountResult && typeof mountResult.cleanup === 'function') {
-      this.activeCleanup = mountResult.cleanup;
     }
 
-    // Update UI indicators
-    const total = this.slides.length;
-    const pct = ((index + 1) / total) * 100;
-    this.progressFill.style.width = `${pct.toFixed(2)}%`;
-    this.progressContainer.setAttribute('aria-valuenow', String(index + 1));
-    this.progressContainer.setAttribute('aria-valuemax', String(total));
+    if (this.tabsNavEl) {
+      Array.from(this.tabsNavEl.children).forEach((btn, i) => {
+        btn.setAttribute('aria-selected', i === index ? 'true' : 'false');
+      });
+    }
 
-    this.slideNumberLabel.textContent = `${index + 1} / ${total}`;
-    this.slideTitleMini.textContent = slide.shortTitle || slide.title;
+    if (this.notesTitle) {
+      this.notesTitle.textContent = tab.title;
+    }
+    if (this.notesContent) {
+      this.notesContent.innerHTML = tab.notes || '<p>Gunakan kontrol interaktif untuk mendemonstrasikan perilaku algoritma.</p>';
+    }
 
-    this.btnPrev.disabled = index === 0;
-    this.btnNext.disabled = index === total - 1;
-
-    Array.from(this.dotsContainer.children).forEach((dot, i) => {
-      dot.classList.toggle('active', i === index);
-    });
-
-    Array.from(this.jumpList.children).forEach((item, i) => {
-      item.classList.toggle('active', i === index);
-    });
-
-    SECTIONS.forEach((sec) => {
-      const tab = this.sectionTabsEl.querySelector(`[data-section="${sec.id}"]`);
-      if (tab) {
-        tab.classList.toggle('active', index >= sec.startSlide && index <= sec.endSlide);
-      }
-    });
-
-    // Update presenter notes
-    this.notesTitle.textContent = `Slide ${index + 1}: ${slide.shortTitle || slide.title}`;
-    this.notesContent.innerHTML = slide.notes || '<p>Sampaikan poin utama visual pada layar.</p>';
+    if (typeof window.scrollTo === 'function') {
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    }
 
     if (updateHash) {
       try {
-        window.history.replaceState(null, '', `#slide-${index + 1}`);
+        window.history.replaceState(null, '', `#${tab.id}`);
       } catch (_e) {
-        // Ignore history restrictions on strict file:// environments
+        // Ignore file:// history restrictions
       }
     }
   }
 }
 
 
-  exports.DeckController = DeckController;
+  exports.WorkspaceController = WorkspaceController;
+  exports.DeckController = WorkspaceController;
   },
-  "slides/index.js": function(exports, __require) {
-const {  introSlides  } = __require("slides/introSlides.js");
-const {  sflaSlides  } = __require("slides/sflaSlides.js");
-const {  wcaSlides  } = __require("slides/wcaSlides.js");
-const {  outroSlides  } = __require("slides/outroSlides.js");
-const slides = [...introSlides, ...sflaSlides, ...wcaSlides, ...outroSlides];
+  "tabs/index.js": function(exports, __require) {
+const {  tabKonsep  } = __require("tabs/tabKonsep.js");
+const {  tabSfla  } = __require("tabs/tabSfla.js");
+const {  tabWca  } = __require("tabs/tabWca.js");
+const {  tabKomparasi  } = __require("tabs/tabKomparasi.js");
+const tabs = [tabKonsep, tabSfla, tabWca, tabKomparasi];
 
-  exports.slides = slides;
+
+
+  exports.tabs = tabs;
+  exports.slides = tabs;
   },
-  "slides/introSlides.js": function(exports, __require) {
+  "tabs/tabKonsep.js": function(exports, __require) {
 /**
- * Slide 1–3: Pembuka, Masalah Optimasi, dan Ide Dasar Metaheuristik
+ * Tab 1: Konsep & Lanskap Optimasi Metaheuristik
+ * Memuat identitas mata kuliah SOKA ITS, eksplorasi interaktif lanskap kontur 2D (klik untuk evaluasi f(x,y)),
+ * simulator dinamika Eksplorasi vs Eksploitasi, dan pengantar taksonomi SFLA & WCA.
  */
-const {  getObjective  } = __require("core/objectives.js");
+const {  OBJECTIVES, getObjective, clampCoord  } = __require("core/objectives.js");
 const {  createRng  } = __require("core/rng.js");
 const {  ContourMapCache, syncCanvasSize  } = __require("render/contourRenderer.js");
 
-const STORAGE_TEAM_KEY = 'sfla_wca_team_names_v1';
-const introSlides = [
-  // =========================================================================
-  // SLIDE 1: JUDUL
-  // =========================================================================
-  {
-    id: 'title',
-    shortTitle: 'Judul',
-    title: 'Algoritma Metaheuristik: SFLA & WCA',
-    theme: 'intro',
-    notes: `
-      <ul>
-        <li><strong>Pembuka (30 detik):</strong> Perkenalkan tim dan mata kuliah <em>Strategi Optimasi Komputasi Awan</em>.</li>
-        <li><strong>Jembatan ide:</strong> Di komputasi awan, ribuan tugas harus dijadwalkan ke mesin virtual secepat mungkin. Mencoba semua kemungkinan mustahil, sehingga kita meniru strategi alam.</li>
-        <li><strong>Dua bintang utama hari ini:</strong> <em>Shuffled Frog-Leaping Algorithm (SFLA)</em> yang meniru lompatan katak di kolam teratai, dan <em>Water Cycle Algorithm (WCA)</em> yang meniru aliran sungai menuju laut.</li>
-        <li><em>Tips:</em> Klik teks nama penyaji di kartu bawah jika ingin menyesuaikan nama anggota kelompok sebelum presentasi dimulai.</li>
-      </ul>
-    `,
-    mount(container, { deck, reducedMotion }) {
-      const savedTeam =
-        localStorage.getItem(STORAGE_TEAM_KEY) ||
-        'Kelompok Penyaji: Klik di sini untuk mengisi Nama & NIM Anggota';
+const TEAM_STORAGE_KEY = 'soka_its_team_identity_v2';
+const tabKonsep = {
+  id: 'konsep',
+  label: 'Konsep & Lanskap',
+  title: 'Konsep Optimasi Metaheuristik & Lanskap Fungsi Objektif',
+  notes: `
+    <p><strong>Fokus Pemaparan Tab Konsep &amp; Lanskap:</strong></p>
+    <ul>
+      <li>Jelaskan mengapa masalah alokasi sumber daya komputasi awan (seperti penjadwalan ribuan tugas ke puluhan VM heterogen) bersifat <em>NP-hard</em> dan penuh jebakan minimum lokal.</li>
+      <li>Klik beberapa titik pada <strong>Peta Kontur 2D Rastrigin</strong> untuk menunjukkan bahwa lembah di sekitar <code>(0.99, 0.99)</code> terlihat rendah secara lokal namun masih bernilai <code>f &approx; 1.98</code>, sedangkan global minimum sejati berada di <code>(0, 0)</code> dengan <code>f = 0</code>.</li>
+      <li>Gunakan <strong>Simulator Eksplorasi vs Eksploitasi</strong> di bagian bawah untuk mendemonstrasikan kegagalan eksploitasi sempit dibanding pencarian metaheuristik seimbang.</li>
+    </ul>
+  `,
 
-      container.innerHTML = `
-        <div class="card-panel canvas-card" style="flex:1; display:flex; align-items:center; justify-content:center;">
-          <canvas id="hero-bg-canvas" style="position:absolute; inset:0; width:100%; height:100%;"></canvas>
-          <div style="position:relative; z-index:2; max-width:1180px; width:100%; padding:clamp(1.5rem, 3vw, 3.2rem); display:flex; flex-direction:column; gap:1.35rem; text-align:center; align-items:center;">
-            <div style="display:inline-flex; align-items:center; gap:0.75rem; padding:0.45rem 1.15rem; border-radius:999px; background:#0e1824; border:1px solid #2b4560; font-size:var(--fs-ui); font-weight:700; color:#e2ecf5;">
-              <span style="color:#43bf9c;">● SFLA</span>
-              <span style="opacity:0.4;">|</span>
-              <span>Mata Kuliah: Strategi Optimasi Komputasi Awan</span>
-              <span style="opacity:0.4;">|</span>
-              <span style="color:#53bce3;">● WCA</span>
-            </div>
-
-            <h1 style="margin:0; font-family:var(--ff-display); font-size:var(--fs-hero); font-weight:800; line-height:1.08; letter-spacing:-0.025em; max-width:20ch;">
-              Optimasi Metaheuristik Berbasis Alam:<br/>
-              <span style="color:#43bf9c;">Shuffled Frog-Leaping</span> &amp; <span style="color:#53bce3;">Water Cycle</span>
-            </h1>
-
-            <p style="margin:0; font-size:var(--fs-lead); color:var(--text-secondary); max-width:56ch; font-weight:500;">
-              Memahami bagaimana kawanan katak di kolam teratai dan siklus aliran air menemukan solusi optimal untuk penjadwalan komputasi awan.
-            </p>
-
-            <div style="display:flex; flex-wrap:wrap; justify-content:center; gap:1rem; margin-top:0.35rem;">
-              <button type="button" class="btn btn-accent" id="btn-start-present" style="padding:0.75rem 1.6rem; font-size:var(--fs-body);">
-                Mulai Presentasi →
-              </button>
-              <button type="button" class="btn" id="btn-jump-sfla">Loncat ke Simulasi SFLA</button>
-              <button type="button" class="btn" id="btn-jump-wca">Loncat ke Simulasi WCA</button>
-            </div>
-
-            <div style="margin-top:0.6rem; padding:0.8rem 1.4rem; border-radius:10px; background:#09131e; border:1px dashed #354b63; max-width:820px; width:100%;">
-              <div style="font-size:var(--fs-small); font-weight:700; color:var(--gold-crown); margin-bottom:0.2rem;">Penyaji / Anggota Kelompok (Klik untuk Edit)</div>
-              <div id="team-editable" contenteditable="true" spellcheck="false" style="font-size:var(--fs-ui); font-weight:700; color:var(--text-primary); outline:none;"></div>
-            </div>
-          </div>
-        </div>
-      `;
-
-      const teamEl = container.querySelector('#team-editable');
-      teamEl.textContent = savedTeam;
-      teamEl.addEventListener('input', () => {
-        try {
-          localStorage.setItem(STORAGE_TEAM_KEY, teamEl.textContent.trim());
-        } catch (_e) {
-          // Abaikan jika penyimpanan lokal dibatasi
-        }
-      });
-
-      container.querySelector('#btn-start-present').addEventListener('click', () => deck.next());
-      container.querySelector('#btn-jump-sfla').addEventListener('click', () => deck.goTo(8));
-      container.querySelector('#btn-jump-wca').addEventListener('click', () => deck.goTo(14));
-
-      // Animasi latar kolam teratai (kiri) + aliran air menuju pusat emas (kanan)
-      const canvas = container.querySelector('#hero-bg-canvas');
-      let rafId = null;
-      const rng = createRng(2026);
-      const particles = Array.from({ length: 36 }, (_, i) => ({
-        side: i < 18 ? 'frog' : 'drop',
-        angle: rng.range(0, Math.PI * 2),
-        radius: rng.range(0.14, 0.48),
-        speed: rng.range(0.002, 0.006),
-        size: rng.range(4, 9),
-        phase: rng.range(0, Math.PI * 2)
-      }));
-
-      function drawHero(ts) {
-        const { ctx, width, height } = syncCanvasSize(canvas);
-        ctx.clearRect(0, 0, width, height);
-
-        const gradLeft = ctx.createRadialGradient(width * 0.22, height * 0.5, 20, width * 0.22, height * 0.5, width * 0.48);
-        gradLeft.addColorStop(0, 'rgba(16, 185, 129, 0.22)');
-        gradLeft.addColorStop(1, 'rgba(6, 15, 25, 0)');
-        ctx.fillStyle = gradLeft;
-        ctx.fillRect(0, 0, width, height);
-
-        const gradRight = ctx.createRadialGradient(width * 0.78, height * 0.5, 20, width * 0.78, height * 0.5, width * 0.48);
-        gradRight.addColorStop(0, 'rgba(56, 189, 248, 0.22)');
-        gradRight.addColorStop(1, 'rgba(6, 15, 25, 0)');
-        ctx.fillStyle = gradRight;
-        ctx.fillRect(0, 0, width, height);
-
-        // Gelombang kontur konsentris tipis di tengah
-        const cx = width * 0.5;
-        const cy = height * 0.5;
-        for (let r = 60; r <= Math.max(width, height) * 0.55; r += 65) {
-          ctx.beginPath();
-          ctx.arc(cx, cy, r, 0, Math.PI * 2);
-          ctx.strokeStyle = 'rgba(148, 163, 184, 0.08)';
-          ctx.lineWidth = 1.2;
-          ctx.stroke();
-        }
-
-        const t = reducedMotion ? 0 : ts * 0.001;
-        for (const p of particles) {
-          const a = p.angle + t * p.speed * 45 * (p.side === 'frog' ? 1 : -1);
-          const pulse = 1 + 0.08 * Math.sin(t * 2 + p.phase);
-          const rx = width * p.radius * pulse;
-          const ry = height * p.radius * pulse;
-          const x = cx + Math.cos(a) * rx;
-          const y = cy + Math.sin(a) * ry;
-
-          ctx.beginPath();
-          ctx.arc(x, y, p.size, 0, Math.PI * 2);
-          ctx.fillStyle =
-            p.side === 'frog' ? 'rgba(52, 211, 153, 0.35)' : 'rgba(56, 189, 248, 0.35)';
-          ctx.fill();
-        }
-
-        if (!reducedMotion) {
-          rafId = requestAnimationFrame(drawHero);
-        }
-      }
-
-      rafId = requestAnimationFrame(drawHero);
-      return () => {
-        if (rafId) cancelAnimationFrame(rafId);
-      };
+  mount(container, { workspace, registerHooks }) {
+    let savedTeam = 'Kelompok SOKA ITS (Klik untuk isi Nama & NRP)';
+    try {
+      const fromStore = localStorage.getItem(TEAM_STORAGE_KEY);
+      if (fromStore && fromStore.trim()) savedTeam = fromStore.trim();
+    } catch (_e) {
+      // Ignore storage restrictions
     }
-  },
 
-  // =========================================================================
-  // SLIDE 2: MASALAH OPTIMASI
-  // =========================================================================
-  {
-    id: 'problem',
-    shortTitle: 'Masalah Optimasi',
-    title: 'Apa Itu Optimasi? Mencari Titik Terendah di Peta Berbukit',
-    theme: 'intro',
-    notes: `
-      <ul>
-        <li><strong>Analogi utama:</strong> Bayangkan kita ditutup matanya di wilayah berbukit berkabut, dan tugas kita adalah menemukan <em>dasar lembah paling rendah</em>.</li>
-        <li><strong>Interaksi langsung:</strong> Klik di mana saja pada peta kontur untuk menjatuhkan sensor pengukur tinggi <code>f(x, y)</code>.</li>
-        <li><strong>Tunjukkan perbedaan 3 peta:</strong>
-          <ul>
-            <li><em>Sphere:</em> 1 cekungan mulus, mudah dituruni.</li>
-            <li><em>Rastrigin:</em> puluhan cekungan palsu (<em>local optima</em>) yang menjebak algoritma sederhana!</li>
-            <li><em>Ackley:</em> dataran bergelombang luas dengan satu lubang curam di tengah.</li>
-          </ul>
-        </li>
-      </ul>
-    `,
-    mount(container) {
-      container.innerHTML = `
-        <div class="slide-top">
-          <div>
-            <div class="slide-context">Slide 2 · Masalah Dasar</div>
-            <h1 class="slide-heading">Mencari Titik Terendah di Peta Berbukit</h1>
-            <p class="slide-keyline">Optimasi berarti mencari koordinat solusi dengan biaya (<em>fitness</em>) paling rendah tanpa terjebak di lembah semu.</p>
+    container.innerHTML = `
+      <!-- Bar Identitas Akademik ITS -->
+      <div class="identity-bar" data-ui>
+        <div class="identity-meta">
+          <span><strong>Mata Kuliah:</strong> Strategi Optimasi Komputasi Awan (SOKA)</span>
+          <span><strong>Institusi:</strong> Institut Teknologi Sepuluh Nopember</span>
+          <div class="identity-edit" data-ui>
+            <span><strong>Penyaji:</strong></span>
+            <span id="konsep-team-input" class="team-editable" data-ui contenteditable="true" spellcheck="false" role="textbox" aria-label="Nama kelompok dan NRP"></span>
+          </div>
+        </div>
+        <div class="tab-lead-meta">
+          <button type="button" class="btn btn-primary" id="konsep-goto-sfla">Buka Lab SFLA</button>
+          <button type="button" class="btn" id="konsep-goto-wca">Buka Lab WCA</button>
+        </div>
+      </div>
+
+      <!-- Judul Modul Utama -->
+      <header class="tab-lead">
+        <div class="tab-lead-main">
+          <div class="tab-breadcrumb">
+            <span class="tab-breadcrumb-dot"></span>
+            <span>Fondasi Optimasi Numerik &amp; Metaheuristik Populasi</span>
+          </div>
+          <h1 class="tab-title">Lanskap Fungsi Objektif &amp; Tantangan Minimum Lokal</h1>
+          <p class="tab-desc">
+            Optimasi bertujuan mencari vektor variabel keputusan <code>X*</code> yang meminimalkan fungsi biaya <code>f(X)</code>. Pada permukaan multimodal seperti Rastrigin dan Ackley, metode berbasis gradien tunggal mudah terjebak di cekungan lokal sehingga diperlukan kolaborasi populasi agen.
+          </p>
+        </div>
+      </header>
+
+      <!-- Bagian 1: Eksplorasi Interaktif Peta Kontur 2D -->
+      <div class="grid-12">
+        <div class="span-7 panel-flush" data-ui>
+          <div class="stage-caption-bar" data-ui>
+            <div>
+              <strong>Peta Topografi Fungsi Benchmark 2D</strong>
+              <span style="margin-left: 0.45rem;">(Klik titik mana pun pada kanvas untuk menguji nilai fitness)</span>
+            </div>
+            <div class="seg-group" data-ui id="konsep-obj-tabs">
+              <button type="button" class="seg-btn active" data-obj="rastrigin">Rastrigin</button>
+              <button type="button" class="seg-btn" data-obj="ackley">Ackley</button>
+              <button type="button" class="seg-btn" data-obj="sphere">Sphere</button>
+            </div>
+          </div>
+
+          <div class="canvas-stage" data-ui>
+            <div class="canvas-hud" data-ui>
+              <div class="hud-status" data-ui>
+                <span class="hud-dot"></span>
+                <span id="konsep-hud-name">Rastrigin (Multimodal)</span>
+              </div>
+              <div class="hud-coords" data-ui id="konsep-hud-probe">Titik Uji: (1.85, 1.40)</div>
+            </div>
+            <canvas id="konsep-landscape-canvas"></canvas>
+          </div>
+
+          <div class="stage-caption-bar" data-ui>
+            <div class="legend-inline">
+              <span class="legend-item"><span class="swatch-round" style="background:#fdbb16;"></span>Global Minimum (0, 0)</span>
+              <span class="legend-item"><span class="swatch-round" style="background:#e05a5f;"></span>Contoh Jebakan Lokal</span>
+              <span class="legend-item"><span class="swatch-round" style="background:#26aee4;"></span>Titik Uji Klik</span>
+            </div>
+            <button type="button" class="btn" id="konsep-btn-sample-trap">Uji Titik Jebakan Lokal</button>
           </div>
         </div>
 
-        <div class="split-grid">
-          <div class="card-panel canvas-card">
-            <div class="stage-hud-overlay">
-              <div class="stage-badge">
-                <span class="stage-badge-code">KLIK PETA</span>
-                <span id="probe-status">Klik titik mana pun untuk mengukur ketinggian f(x, y)</span>
-              </div>
-            </div>
-            <canvas id="problem-contour-canvas"></canvas>
+        <div class="span-5 panel" data-ui>
+          <div>
+            <h2 class="panel-title">Telemetri Evaluasi Titik &amp; Formulasi</h2>
+            <p class="panel-subtitle">Perbandingan nilai fungsi objektif pada koordinat pilihan Anda terhadap titik optimum global.</p>
           </div>
 
-          <div class="card-panel" style="justify-content:space-between; gap:1rem;">
-            <div style="display:flex; flex-direction:column; gap:0.85rem;">
-              <div style="font-size:var(--fs-ui); font-weight:700; color:var(--theme-primary);">Pilih Bentang Alam (Fungsi Objektif 2D)</div>
-              <div style="display:flex; gap:0.5rem; flex-wrap:wrap;" id="obj-btn-group">
-                <button type="button" class="btn btn-accent" data-obj="sphere">Sphere (Mulus)</button>
-                <button type="button" class="btn" data-obj="rastrigin">Rastrigin (Banyak Jebakan)</button>
-                <button type="button" class="btn" data-obj="ackley">Ackley (Corong Curam)</button>
-              </div>
+          <div class="kpi-strip" data-ui>
+            <div class="kpi-cell" data-ui>
+              <span class="kpi-label">Koordinat Uji (x, y)</span>
+              <span class="kpi-val sky" id="konsep-kpi-xy">(1.85, 1.40)</span>
+              <span class="kpi-sub" id="konsep-kpi-domain">Domain [-5.12, 5.12]</span>
+            </div>
+            <div class="kpi-cell" data-ui>
+              <span class="kpi-label">Nilai Biaya f(x, y)</span>
+              <span class="kpi-val" id="konsep-kpi-fx">0.000</span>
+              <span class="kpi-sub">Target minimum: 0.000</span>
+            </div>
+            <div class="kpi-cell" data-ui>
+              <span class="kpi-label">Jarak ke Optimum</span>
+              <span class="kpi-val gold" id="konsep-kpi-dist">0.000</span>
+              <span class="kpi-sub">Radius Euclidean</span>
+            </div>
+          </div>
 
-              <div class="formula-box" id="prob-formula">f(x, y) = x² + y²</div>
-              <p id="prob-desc" style="margin:0; font-size:var(--fs-body); color:var(--text-secondary);">
-                Satu lembah mulus tanpa jebakan lokal, cocok untuk menguji kecepatan dasar algoritma.
+          <div class="formula-block" data-ui>
+            <code id="konsep-formula-text">f(x, y) = 20 + (x² - 10 cos 2πx) + (y² - 10 cos 2πy)</code>
+            <div class="formula-note" id="konsep-formula-char">Karakteristik: Banyak lembah lokal periodik yang mengelilingi pusat (0, 0).</div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Fungsi Benchmark</th>
+                  <th>Sifat Lanskap</th>
+                  <th class="num">Domain</th>
+                  <th class="num">f(0, 0)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Sphere</strong></td>
+                  <td>Unimodal konveks mulus (uji kecepatan konvergensi dasar)</td>
+                  <td class="num">[-5.12, 5.12]</td>
+                  <td class="num">0</td>
+                </tr>
+                <tr>
+                  <td><strong>Rastrigin</strong></td>
+                  <td>Multimodal ekstrem dengan puluhan cekungan kosinus lokal</td>
+                  <td class="num">[-5.12, 5.12]</td>
+                  <td class="num">0</td>
+                </tr>
+                <tr>
+                  <td><strong>Ackley</strong></td>
+                  <td>Dataran luar bergelombang dengan corong pusat curam</td>
+                  <td class="num">[-5.00, 5.00]</td>
+                  <td class="num">0</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bagian 2: Simulator Eksplorasi vs Eksploitasi & Ringkasan Dua Algoritma -->
+      <div class="grid-12">
+        <div class="span-6 panel" data-ui>
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">Simulator Dinamika Eksplorasi vs Eksploitasi</h2>
+              <p class="panel-subtitle">Amati perbedaan perilaku 18 agen populasi pada permukaan Rastrigin (tekan P atau S).</p>
+            </div>
+            <div class="seg-group" data-ui id="konsep-dyn-modes">
+              <button type="button" class="seg-btn" data-mode="explore">Eksplorasi Acak</button>
+              <button type="button" class="seg-btn" data-mode="exploit">Eksploitasi Sempit</button>
+              <button type="button" class="seg-btn active" data-mode="balanced">Seimbang</button>
+            </div>
+          </div>
+
+          <div class="canvas-stage-compact" data-ui>
+            <canvas id="konsep-dyn-canvas"></canvas>
+          </div>
+
+          <div class="ctrl-toolbar" data-ui>
+            <button type="button" class="btn btn-primary" id="konsep-dyn-step">Langkah Populasi (S)</button>
+            <button type="button" class="btn" id="konsep-dyn-reset">Acak Ulang (R)</button>
+            <span style="margin-left:auto; font-size:0.82rem;" class="tabular" id="konsep-dyn-stat">Langkah: 0 · Terbaik f = 0.000</span>
+          </div>
+
+          <p class="panel-subtitle" id="konsep-dyn-desc" style="margin:0;">
+            Mode Seimbang memadukan penjelajahan lintas lembah di awal iterasi dengan pemusatan lokal menuju kandidat terbaik hingga mendekati (0, 0).
+          </p>
+        </div>
+
+        <div class="span-6 panel" data-ui>
+          <div>
+            <h2 class="panel-title">Dua Paradigma Metaheuristik pada Studi Ini</h2>
+            <p class="panel-subtitle">Perbandingan mekanisme inti sebelum masuk ke laboratorium simulasi masing-masing tab.</p>
+          </div>
+
+          <div class="mini-card-grid">
+            <div class="mini-card" data-ui style="border-left: 3px solid var(--its-tosca);">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <strong style="color:var(--ink);">Shuffled Frog-Leaping (SFLA)</strong>
+                <span class="status-chip tosca">Eusuff &amp; Lansey, 2003</span>
+              </div>
+              <p class="panel-subtitle" style="margin:0;">
+                Mempartisi populasi katak ke dalam beberapa <strong>Memeplex</strong> independen. Katak terburuk <code>Xw</code> melompat menuju katak terbaik lokal <code>Xb</code> atau global <code>Xg</code>, lalu seluruh kelompok dikocok ulang (<em>Shuffle</em>).
               </p>
+              <code>D = rand() * (Xb - Xw)</code>
             </div>
 
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
-              <div style="padding:0.85rem 1rem; border-radius:10px; background:#0d2136; border:1px solid #2298c7;">
-                <div style="font-size:var(--fs-small); color:var(--text-muted); font-weight:700;">Warna Biru Gelap</div>
-                <div style="font-size:var(--fs-ui); font-weight:800; color:#7dd3fc;">Lembah Rendah (Solusi Baik)</div>
+            <div class="mini-card" data-ui style="border-left: 3px solid var(--its-sky);">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <strong style="color:var(--ink);">Water Cycle Algorithm (WCA)</strong>
+                <span class="status-chip sky">Eskandar et al., 2012</span>
               </div>
-              <div style="padding:0.85rem 1rem; border-radius:10px; background:#261f0d; border:1px solid #d8a33a;">
-                <div style="font-size:var(--fs-small); color:var(--text-muted); font-weight:700;">Warna Kuning / Oker</div>
-                <div style="font-size:var(--fs-ui); font-weight:800; color:#fae0a5;">Puncak Bukit (Biaya Mahal)</div>
-              </div>
-            </div>
-
-            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.6rem; padding-top:0.5rem; border-top:1px solid var(--border-subtle);">
-              <label style="display:inline-flex; align-items:center; gap:0.55rem; font-size:var(--fs-ui); font-weight:700; cursor:pointer;">
-                <input type="checkbox" id="chk-reveal-opt" checked style="width:20px; height:20px; accent-color:var(--gold-crown);" />
-                <span>Tampilkan Titik Optimum Global (0, 0)</span>
-              </label>
-              <button type="button" class="btn" id="btn-clear-probes">Bersihkan Titik Uji</button>
+              <p class="panel-subtitle" style="margin:0;">
+                Menyusun populasi tetesan air ke dalam hierarki <strong>Aliran, Sungai, dan Laut</strong> berdasarkan proporsi intensitas fitness <code>NSn</code>. Saat sungai terlalu dekat ke laut (<code>&lt; dmax</code>), terjadi penguapan dan hujan baru.
+              </p>
+              <code>X_baru = X + rand() * C * (X_induk - X)</code>
             </div>
           </div>
+
+          <div class="panel-navy" data-ui>
+            <strong style="font-size:0.88rem; color:var(--ink);">Relevansi pada Komputasi Awan (Cloud Task Scheduling)</strong>
+            <p class="panel-subtitle" style="margin:0.3rem 0 0;">
+              Ketika <code>n</code> cloudlet dijadwalkan ke <code>m</code> Virtual Machine heterogen, ruang keputusannya mencapai <code>m^n</code> kombinasi. SFLA unggul melalui pertukaran solusi antar-komunitas memeplex, sedangkan WCA unggul dalam pemusatan cepat menuju titik Laut terbaik dengan penguapan adaptif yang terukur.
+            </p>
+          </div>
         </div>
-      `;
+      </div>
+    `;
 
-      const canvas = container.querySelector('#problem-contour-canvas');
-      const formulaEl = container.querySelector('#prob-formula');
-      const descEl = container.querySelector('#prob-desc');
-      const probeStatus = container.querySelector('#probe-status');
-      const chkReveal = container.querySelector('#chk-reveal-opt');
-      const contourCache = new ContourMapCache();
-
-      let currentObj = getObjective('rastrigin');
-      let probes = [
-        { x: -2.9, y: 2.1 },
-        { x: 1.95, y: -1.02 }
-      ];
-
-      // Set default tombol aktif ke Rastrigin agar konsep bukit & lembah langsung terasa!
-      function selectObj(id) {
-        currentObj = getObjective(id);
-        formulaEl.textContent = currentObj.formulaText;
-        descEl.textContent = currentObj.character;
-        container.querySelectorAll('#obj-btn-group .btn').forEach((b) => {
-          b.classList.toggle('btn-accent', b.dataset.obj === id);
-        });
-        render();
-      }
-
-      function render() {
-        const { ctx, width, height } = syncCanvasSize(canvas);
-        const vp = contourCache.renderBackground(ctx, width, height, currentObj, 'terrain', {
-          showOptimum: chkReveal.checked
-        });
-        if (!vp) return;
-
-        probes.forEach((p, idx) => {
-          const val = currentObj.evaluate(p.x, p.y);
-          const s = vp.worldToScreen(p.x, p.y);
-
-          ctx.save();
-          ctx.beginPath();
-          ctx.arc(s.x, s.y, 9, 0, Math.PI * 2);
-          ctx.fillStyle = val < 3 ? '#34d399' : '#f43f5e';
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 2.5;
-          ctx.fill();
-          ctx.stroke();
-
-          const label = `#${idx + 1}: f=${val.toFixed(2)}`;
-          ctx.font = '700 14px "Ubuntu Mono", monospace';
-          const tw = ctx.measureText(label).width + 14;
-          ctx.fillStyle = 'rgba(5, 13, 24, 0.9)';
-          ctx.fillRect(s.x + 12, s.y - 14, tw, 26);
-          ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(s.x + 12, s.y - 14, tw, 26);
-          ctx.fillStyle = '#f8fafc';
-          ctx.fillText(label, s.x + 19, s.y + 4);
-          ctx.restore();
-        });
-      }
-
-      canvas.addEventListener('click', (e) => {
-        const rect = canvas.getBoundingClientRect();
-        const { width, height } = syncCanvasSize(canvas);
-        const vp = contourCache.renderBackground(
-          canvas.getContext('2d'),
-          width,
-          height,
-          currentObj,
-          'terrain',
-          { showOptimum: chkReveal.checked }
-        );
-        if (!vp) return;
-        const w = vp.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
-        if (w.x < currentObj.min || w.x > currentObj.max || w.y < currentObj.min || w.y > currentObj.max) {
-          return;
+    // 1. Inisialisasi input identitas penyaji
+    const teamInput = container.querySelector('#konsep-team-input');
+    if (teamInput) {
+      teamInput.textContent = savedTeam;
+      teamInput.addEventListener('input', () => {
+        try {
+          localStorage.setItem(TEAM_STORAGE_KEY, teamInput.textContent || '');
+        } catch (_e) {
+          // Ignore storage error
         }
-        probes.push({ x: w.x, y: w.y });
-        if (probes.length > 6) probes.shift();
-        const fVal = currentObj.evaluate(w.x, w.y);
-        probeStatus.textContent = `Titik (${w.x.toFixed(2)}, ${w.y.toFixed(2)}) → tinggi f = ${fVal.toFixed(3)}`;
-        render();
       });
-
-      container.querySelectorAll('#obj-btn-group .btn').forEach((btn) => {
-        btn.addEventListener('click', () => selectObj(btn.dataset.obj));
-      });
-      chkReveal.addEventListener('change', render);
-      container.querySelector('#btn-clear-probes').addEventListener('click', () => {
-        probes = [];
-        probeStatus.textContent = 'Klik titik mana pun untuk mengukur ketinggian f(x, y)';
-        render();
-      });
-
-      const onResize = () => render();
-      window.addEventListener('resize', onResize);
-      selectObj('rastrigin');
-
-      return () => {
-        window.removeEventListener('resize', onResize);
-      };
     }
-  },
 
-  // =========================================================================
-  // SLIDE 3: IDE UMUM METAHEURISTIK (EKSPLORASI VS EKSPLOITASI)
-  // =========================================================================
-  {
-    id: 'metaheuristics',
-    shortTitle: 'Metaheuristik',
-    title: 'Populasi Solusi: Eksplorasi vs Eksploitasi',
-    theme: 'intro',
-    notes: `
-      <ul>
-        <li><strong>Mengapa populasi?</strong> Satu pencari sendirian mudah tersesat di lembah lokal. Puluhan agen yang bekerja sama bisa saling berbagi informasi posisi terbaik.</li>
-        <li><strong>Dua gaya tarik-menarik:</strong>
-          <ul>
-            <li><em>Eksplorasi (Menjelajah):</em> Menyebar ke area baru agar tidak terjebak di lembah palsu.</li>
-            <li><em>Eksploitasi (Memusat):</em> Memperdalam pencarian di sekitar titik terbaik yang sudah ditemukan.</li>
-          </ul>
-        </li>
-        <li><strong>Demo tombol di layar:</strong> Klik 3 mode di kanan untuk memperlihatkan akibat terlalu menyebar vs terjebak lokal vs seimbang!</li>
-      </ul>
-    `,
-    mount(container, { reducedMotion }) {
-      container.innerHTML = `
-        <div class="slide-top">
-          <div>
-            <div class="slide-context">Slide 3 · Konsep Kunci Metaheuristik</div>
-            <h1 class="slide-heading">Populasi Solusi: Eksplorasi vs Eksploitasi</h1>
-            <p class="slide-keyline">Algoritma metaheuristik menyeimbangkan penjelajahan area luas dan pemusatan di sekitar lembah terbaik.</p>
-          </div>
-        </div>
+    container.querySelector('#konsep-goto-sfla')?.addEventListener('click', () => {
+      workspace?.goToTab?.('sfla');
+    });
+    container.querySelector('#konsep-goto-wca')?.addEventListener('click', () => {
+      workspace?.goToTab?.('wca');
+    });
 
-        <div class="split-grid">
-          <div class="card-panel canvas-card">
-            <div class="stage-hud-overlay">
-              <div class="stage-badge">
-                <span class="stage-badge-code" id="meta-mode-code">SEIMBANG</span>
-                <span id="meta-mode-desc">Menjelajah awal lalu memusat ke Optimum Global (0, 0)</span>
-              </div>
-            </div>
-            <canvas id="meta-balance-canvas"></canvas>
-          </div>
+    // 2. Peta Kontur 2D Interaktif (Klik Evaluasi Titik)
+    const landscapeCanvas = container.querySelector('#konsep-landscape-canvas');
+    const contourCache = new ContourMapCache();
+    let currentObj = OBJECTIVES.rastrigin;
+    let probePoint = { x: 1.85, y: 1.4 };
+    let lastViewport = null;
 
-          <div class="card-panel" style="justify-content:space-between; gap:1rem;">
-            <div style="display:flex; flex-direction:column; gap:0.75rem;">
-              <div style="font-size:var(--fs-ui); font-weight:700; color:var(--theme-primary);">Bandingkan 3 Perilaku Populasi</div>
-              <button type="button" class="btn" data-mode="explore" style="justify-content:flex-start; text-align:left; padding:0.75rem 0.95rem;">
-                <span class="role-chip">EKS</span>
-                <span><strong>100% Eksplorasi:</strong> Acak terus-menerus, sulit akurat</span>
-              </button>
-              <button type="button" class="btn" data-mode="exploit" style="justify-content:flex-start; text-align:left; padding:0.75rem 0.95rem;">
-                <span class="role-chip" style="color:#d95b5b;">LOK</span>
-                <span><strong>100% Eksploitasi:</strong> Cepat kumpul, terjebak lembah lokal</span>
-              </button>
-              <button type="button" class="btn btn-accent" data-mode="balanced" style="justify-content:flex-start; text-align:left; padding:0.75rem 0.95rem;">
-                <span class="role-chip" style="background:#071b27; color:#fae0a5; border-color:#d8a33a;">OPT</span>
-                <span><strong>Metaheuristik (SFLA &amp; WCA):</strong> Lolos jebakan menuju optimum</span>
-              </button>
-            </div>
+    const TRAP_POINTS = {
+      rastrigin: { x: 0.995, y: 0.995, label: 'Minimum Lokal (0.99, 0.99)' },
+      ackley: { x: 1.98, y: 0.98, label: 'Cekungan Lokal (1.98, 0.98)' },
+      sphere: { x: -2.4, y: 2.1, label: 'Lereng Konveks (-2.40, 2.10)' }
+    };
 
-            <div style="padding:1rem 1.15rem; border-radius:10px; background:#0b1623; border:1px solid var(--border-subtle); display:flex; flex-direction:column; gap:0.65rem;">
-              <div style="display:flex; justify-content:space-between; font-size:var(--fs-small); font-weight:700;">
-                <span style="color:#53bce3;">Eksplorasi Global</span>
-                <span style="color:#d8a33a;">Eksploitasi Lokal</span>
-              </div>
-              <div style="height:12px; border-radius:999px; background:#162638; overflow:hidden; display:flex;">
-                <div id="bar-exp-left" style="width:50%; background-color:#2298c7; transition:width 0.3s ease-out;"></div>
-                <div id="bar-exp-right" style="flex:1; background-color:#d8a33a;"></div>
-              </div>
-              <div id="meta-takeaway" style="font-size:var(--fs-ui); color:var(--text-secondary);">
-                <strong>SFLA</strong> memakai <em>Shuffle + Sensor Acak</em> untuk eksplorasi &amp; <em>Lompatan Memeplex</em> untuk eksploitasi.<br/>
-                <strong>WCA</strong> memakai <em>Penguapan + Hujan</em> untuk eksplorasi &amp; <em>Aliran ke Laut</em> untuk eksploitasi.
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
+    function updateProbeTelemetry() {
+      const fx = currentObj.evaluate(probePoint.x, probePoint.y);
+      const dist = Math.hypot(probePoint.x - currentObj.optimum.x, probePoint.y - currentObj.optimum.y);
 
-      const canvas = container.querySelector('#meta-balance-canvas');
-      const modeCodeEl = container.querySelector('#meta-mode-code');
-      const modeDescEl = container.querySelector('#meta-mode-desc');
-      const barLeft = container.querySelector('#bar-exp-left');
-      const contour = new ContourMapCache();
-      const obj = getObjective('rastrigin');
+      const hudName = container.querySelector('#konsep-hud-name');
+      const hudProbe = container.querySelector('#konsep-hud-probe');
+      const kpiXy = container.querySelector('#konsep-kpi-xy');
+      const kpiDomain = container.querySelector('#konsep-kpi-domain');
+      const kpiFx = container.querySelector('#konsep-kpi-fx');
+      const kpiDist = container.querySelector('#konsep-kpi-dist');
+      const formulaText = container.querySelector('#konsep-formula-text');
+      const formulaChar = container.querySelector('#konsep-formula-char');
 
-      let mode = 'balanced';
-      let rafId = null;
-      const rng = createRng(108);
-      const agents = Array.from({ length: 24 }, () => ({
-        x: rng.range(-4.5, 4.5),
-        y: rng.range(-4.5, 4.5),
-        vx: rng.range(-0.04, 0.04),
-        vy: rng.range(-0.04, 0.04),
-        phase: rng.range(0, Math.PI * 2)
-      }));
+      if (hudName) hudName.textContent = `${currentObj.name} (${currentObj.character})`;
+      if (hudProbe) hudProbe.textContent = `Titik Uji: (${probePoint.x.toFixed(2)}, ${probePoint.y.toFixed(2)}) · f = ${fx.toFixed(3)}`;
+      if (kpiXy) kpiXy.textContent = `(${probePoint.x.toFixed(2)}, ${probePoint.y.toFixed(2)})`;
+      if (kpiDomain) kpiDomain.textContent = `Domain [${currentObj.min}, ${currentObj.max}]`;
+      if (kpiFx) kpiFx.textContent = fx < 0.001 && fx > 0 ? fx.toExponential(2) : fx.toFixed(3);
+      if (kpiDist) kpiDist.textContent = dist.toFixed(3);
+      if (formulaText) formulaText.textContent = currentObj.formulaText;
+      if (formulaChar) formulaChar.textContent = `Karakteristik: ${currentObj.character}. Global minimum di (0, 0) dengan f = 0.`;
+    }
 
-      function setMode(newMode) {
-        mode = newMode;
-        container.querySelectorAll('[data-mode]').forEach((b) => {
-          b.classList.toggle('btn-accent', b.dataset.mode === newMode);
-        });
-        if (newMode === 'explore') {
-          modeCodeEl.textContent = 'EKSPLORASI MURNI';
-          modeDescEl.textContent = 'Agen melompat acak ke segala arah tanpa pemusatan';
-          barLeft.style.width = '88%';
-        } else if (newMode === 'exploit') {
-          modeCodeEl.textContent = 'JEBAKAN LOKAL';
-          modeDescEl.textContent = 'Terlalu rakus: seluruh populasi terjebak di lembah palsu (-2, 2)';
-          barLeft.style.width = '14%';
-        } else {
-          modeCodeEl.textContent = 'SEIMBANG (IDEAL)';
-          modeDescEl.textContent = 'Sebagian menjelajah, sebagian memusat ke Optimum Global (0, 0)';
-          barLeft.style.width = '50%';
-        }
-      }
-
-      container.querySelectorAll('[data-mode]').forEach((b) => {
-        b.addEventListener('click', () => setMode(b.dataset.mode));
+    function renderLandscape() {
+      if (!landscapeCanvas) return;
+      const { ctx, width, height } = syncCanvasSize(landscapeCanvas);
+      const vp = contourCache.renderBackground(ctx, width, height, currentObj, 'terrain', {
+        showOptimum: true
       });
+      if (!vp) return;
+      lastViewport = vp;
 
-      function tick(ts) {
-        const { ctx, width, height } = syncCanvasSize(canvas);
-        const vp = contour.renderBackground(ctx, width, height, obj, 'terrain', { showOptimum: true });
-        if (!vp) return;
+      // Gambar penanda contoh jebakan lokal
+      const trap = TRAP_POINTS[currentObj.id] || TRAP_POINTS.rastrigin;
+      const trapPos = vp.worldToScreen(trap.x, trap.y);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(trapPos.x, trapPos.y, 6.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#e05a5f';
+      ctx.strokeStyle = '#03132b';
+      ctx.lineWidth = 2;
+      ctx.fill();
+      ctx.stroke();
 
-        const t = ts * 0.001;
-        // Gambar penanda jebakan lokal saat mode exploit
-        if (mode === 'exploit') {
-          const trap = vp.worldToScreen(-1.99, 1.99);
-          ctx.save();
-          ctx.strokeStyle = '#fb7185';
-          ctx.lineWidth = 2.5;
-          ctx.setLineDash([5, 4]);
-          ctx.beginPath();
-          ctx.arc(trap.x, trap.y, 28, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.setLineDash([]);
-          ctx.font = '700 14px "Plus Jakarta Sans", sans-serif';
-          ctx.fillStyle = '#fda4af';
-          ctx.fillText('Lembah Lokal (Jebakan!)', trap.x + 32, trap.y + 5);
-          ctx.restore();
-        }
+      ctx.font = '700 10.5px "Plus Jakarta Sans", sans-serif';
+      ctx.fillStyle = '#ff8a80';
+      ctx.fillText(trap.label, trapPos.x + 10, trapPos.y + 4);
 
-        agents.forEach((a, idx) => {
-          if (!reducedMotion) {
-            if (mode === 'explore') {
-              a.x += Math.sin(t * 2.1 + a.phase + idx) * 0.055;
-              a.y += Math.cos(t * 1.9 + a.phase * 1.3) * 0.055;
-              if (a.x > 4.6) a.x = -4.6;
-              if (a.x < -4.6) a.x = 4.6;
-              if (a.y > 4.6) a.y = -4.6;
-              if (a.y < -4.6) a.y = 4.6;
-            } else if (mode === 'exploit') {
-              // Tertarik ke lembah lokal (-1.99, 1.99)
-              const tx = -1.99 + Math.cos(a.phase + t) * 0.16;
-              const ty = 1.99 + Math.sin(a.phase + t) * 0.16;
-              a.x += (tx - a.x) * 0.06;
-              a.y += (ty - a.y) * 0.06;
-            } else {
-              // Balanced: 18 agen konvergen ke (0,0), 6 agen tetap berpatroli lalu sesekali mendekat
-              if (idx % 4 === 0) {
-                const orbitR = 1.6 + 1.1 * Math.sin(t * 0.8 + a.phase);
-                const tx = Math.cos(t * 0.9 + a.phase) * orbitR;
-                const ty = Math.sin(t * 0.9 + a.phase) * orbitR;
-                a.x += (tx - a.x) * 0.05;
-                a.y += (ty - a.y) * 0.05;
-              } else {
-                const tx = Math.cos(a.phase + t * 1.5) * 0.18;
-                const ty = Math.sin(a.phase + t * 1.5) * 0.18;
-                a.x += (tx - a.x) * 0.055;
-                a.y += (ty - a.y) * 0.055;
-              }
+      // Gambar penanda titik uji klik pengguna
+      const pScreen = vp.worldToScreen(probePoint.x, probePoint.y);
+      ctx.strokeStyle = 'rgba(38, 174, 228, 0.7)';
+      ctx.lineWidth = 1.3;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(pScreen.x - 16, pScreen.y);
+      ctx.lineTo(pScreen.x + 16, pScreen.y);
+      ctx.moveTo(pScreen.x, pScreen.y - 16);
+      ctx.lineTo(pScreen.x, pScreen.y + 16);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.beginPath();
+      ctx.arc(pScreen.x, pScreen.y, 7.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#26aee4';
+      ctx.strokeStyle = '#ecf3ff';
+      ctx.lineWidth = 2;
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+
+      updateProbeTelemetry();
+    }
+
+    landscapeCanvas?.addEventListener('click', (e) => {
+      if (!lastViewport) return;
+      const rect = landscapeCanvas.getBoundingClientRect();
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
+      const world = lastViewport.screenToWorld(px, py);
+      probePoint = {
+        x: clampCoord(world.x, currentObj.min, currentObj.max),
+        y: clampCoord(world.y, currentObj.min, currentObj.max)
+      };
+      renderLandscape();
+    });
+
+    container.querySelector('#konsep-btn-sample-trap')?.addEventListener('click', () => {
+      const trap = TRAP_POINTS[currentObj.id] || TRAP_POINTS.rastrigin;
+      probePoint = { x: trap.x, y: trap.y };
+      renderLandscape();
+    });
+
+    const objButtons = container.querySelectorAll('#konsep-obj-tabs .seg-btn');
+    objButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        objButtons.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentObj = getObjective(btn.dataset.obj);
+        probePoint = {
+          x: clampCoord(probePoint.x, currentObj.min, currentObj.max),
+          y: clampCoord(probePoint.y, currentObj.min, currentObj.max)
+        };
+        renderLandscape();
+      });
+    });
+
+    // 3. Simulator Eksplorasi vs Eksploitasi
+    const dynCanvas = container.querySelector('#konsep-dyn-canvas');
+    const dynCache = new ContourMapCache();
+    const dynObj = OBJECTIVES.rastrigin;
+    let dynMode = 'balanced';
+    let dynStepCount = 0;
+    let dynRng = createRng(1042);
+    let dynAgents = [];
+    let dynPlaying = false;
+    let dynTimer = null;
+
+    const MODE_DESCRIPTIONS = {
+      explore:
+        'Eksplorasi Acak Murni: agen terus melompat luas ke seluruh domain tanpa memanfaatkan informasi solusi terbaik, sehingga sulit memusat di (0, 0).',
+      exploit:
+        'Eksploitasi Sempit: seluruh agen langsung tertarik ke kandidat awal terbaik di cekungan lokal sekitar (1.99, 0.99) dan kehilangan keragaman untuk lolos.',
+      balanced:
+        'Metaheuristik Seimbang: sebagian agen mengeksplorasi lembah baru sementara agen lain memusat ke kandidat terbaik global hingga mencapai cekungan pusat (0, 0).'
+    };
+
+    function resetDynamics() {
+      dynStepCount = 0;
+      dynRng = createRng(1042);
+      if (dynMode === 'exploit') {
+        // Mulai di sekitar cekungan lokal (1.98, 0.98) agar efek jebakan lokal tampak jelas
+        dynAgents = Array.from({ length: 18 }, () => {
+          const x = clampCoord(2.1 + dynRng.range(-0.9, 0.9), dynObj.min, dynObj.max);
+          const y = clampCoord(1.1 + dynRng.range(-0.9, 0.9), dynObj.min, dynObj.max);
+          return { x, y, fitness: dynObj.evaluate(x, y) };
+        });
+      } else {
+        dynAgents = Array.from({ length: 18 }, () => {
+          const x = dynRng.range(dynObj.min * 0.88, dynObj.max * 0.88);
+          const y = dynRng.range(dynObj.min * 0.88, dynObj.max * 0.88);
+          return { x, y, fitness: dynObj.evaluate(x, y) };
+        });
+      }
+      renderDynamics();
+    }
+
+    function stepDynamics() {
+      dynStepCount += 1;
+      dynAgents.sort((a, b) => a.fitness - b.fitness);
+      const leader = dynAgents[0];
+
+      for (let i = 0; i < dynAgents.length; i++) {
+        const ag = dynAgents[i];
+        let nx = ag.x;
+        let ny = ag.y;
+
+        if (dynMode === 'explore') {
+          nx = dynRng.range(dynObj.min, dynObj.max);
+          ny = dynRng.range(dynObj.min, dynObj.max);
+        } else if (dynMode === 'exploit') {
+          if (i > 0) {
+            nx = ag.x + dynRng.range(0.35, 0.75) * (leader.x - ag.x) + dynRng.range(-0.04, 0.04);
+            ny = ag.y + dynRng.range(0.35, 0.75) * (leader.y - ag.y) + dynRng.range(-0.04, 0.04);
+          }
+        } else {
+          // Balanced metaheuristic step
+          if (i === 0) {
+            const candX = clampCoord(ag.x + dynRng.range(-0.35, 0.35), dynObj.min, dynObj.max);
+            const candY = clampCoord(ag.y + dynRng.range(-0.35, 0.35), dynObj.min, dynObj.max);
+            if (dynObj.evaluate(candX, candY) < ag.fitness) {
+              nx = candX;
+              ny = candY;
+            }
+          } else if (i >= dynAgents.length - 4 && dynStepCount < 14) {
+            nx = dynRng.range(-2.2, 2.2);
+            ny = dynRng.range(-2.2, 2.2);
+          } else {
+            const candX = clampCoord(
+              ag.x + dynRng.range(0.4, 1.75) * (leader.x - ag.x),
+              dynObj.min,
+              dynObj.max
+            );
+            const candY = clampCoord(
+              ag.y + dynRng.range(0.4, 1.75) * (leader.y - ag.y),
+              dynObj.min,
+              dynObj.max
+            );
+            if (dynObj.evaluate(candX, candY) < ag.fitness) {
+              nx = candX;
+              ny = candY;
             }
           }
+        }
 
-          const s = vp.worldToScreen(a.x, a.y);
-          ctx.beginPath();
-          ctx.arc(s.x, s.y, 7.5, 0, Math.PI * 2);
-          ctx.fillStyle = mode === 'exploit' ? '#fb7185' : idx % 4 === 0 && mode === 'balanced' ? '#38bdf8' : '#34d399';
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 2;
-          ctx.fill();
-          ctx.stroke();
-        });
+        ag.x = clampCoord(nx, dynObj.min, dynObj.max);
+        ag.y = clampCoord(ny, dynObj.min, dynObj.max);
+        ag.fitness = dynObj.evaluate(ag.x, ag.y);
+      }
+      renderDynamics();
+    }
 
-        rafId = requestAnimationFrame(tick);
+    function renderDynamics() {
+      if (!dynCanvas) return;
+      const { ctx, width, height } = syncCanvasSize(dynCanvas);
+      const vp = dynCache.renderBackground(ctx, width, height, dynObj, 'pond', {
+        showOptimum: true
+      });
+      if (!vp) return;
+
+      let best = dynAgents[0] || { x: 0, y: 0, fitness: 0 };
+      for (const ag of dynAgents) {
+        if (ag.fitness < best.fitness) best = ag;
       }
 
-      rafId = requestAnimationFrame(tick);
-      return () => {
-        if (rafId) cancelAnimationFrame(rafId);
-      };
-    }
-  }
-];
+      for (const ag of dynAgents) {
+        const pos = vp.worldToScreen(ag.x, ag.y);
+        const isBest = ag === best;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, isBest ? 7.5 : 5.2, 0, Math.PI * 2);
+        ctx.fillStyle = isBest
+          ? '#fdbb16'
+          : dynMode === 'exploit'
+            ? '#e05a5f'
+            : dynMode === 'explore'
+              ? '#75bde0'
+              : '#12b0a2';
+        ctx.strokeStyle = '#03132b';
+        ctx.lineWidth = 1.6;
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
 
-  exports.introSlides = introSlides;
+      const statEl = container.querySelector('#konsep-dyn-stat');
+      const descEl = container.querySelector('#konsep-dyn-desc');
+      if (statEl) {
+        statEl.textContent = `Langkah: ${dynStepCount} · Terbaik f = ${best.fitness.toFixed(3)}`;
+      }
+      if (descEl) {
+        descEl.textContent = MODE_DESCRIPTIONS[dynMode];
+      }
+    }
+
+    const dynModeButtons = container.querySelectorAll('#konsep-dyn-modes .seg-btn');
+    dynModeButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        dynModeButtons.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        dynMode = btn.dataset.mode || 'balanced';
+        resetDynamics();
+      });
+    });
+
+    container.querySelector('#konsep-dyn-step')?.addEventListener('click', () => stepDynamics());
+    container.querySelector('#konsep-dyn-reset')?.addEventListener('click', () => resetDynamics());
+
+    registerHooks?.({
+      togglePlay: () => {
+        dynPlaying = !dynPlaying;
+        if (dynPlaying) {
+          dynTimer = setInterval(() => {
+            if (dynStepCount >= 30) {
+              dynPlaying = false;
+              clearInterval(dynTimer);
+              dynTimer = null;
+              return;
+            }
+            stepDynamics();
+          }, 420);
+        } else if (dynTimer) {
+          clearInterval(dynTimer);
+          dynTimer = null;
+        }
+      },
+      step: () => stepDynamics(),
+      reset: () => resetDynamics()
+    });
+
+    const onResize = () => {
+      renderLandscape();
+      renderDynamics();
+    };
+    window.addEventListener('resize', onResize);
+
+    resetDynamics();
+    requestAnimationFrame(() => {
+      renderLandscape();
+      renderDynamics();
+    });
+
+    return () => {
+      window.removeEventListener('resize', onResize);
+      if (dynTimer) clearInterval(dynTimer);
+    };
+  }
+};
+
+  exports.tabKonsep = tabKonsep;
   },
   "core/objectives.js": function(exports, __require) {
 /**
@@ -1021,7 +986,7 @@ function createRng(seedInput = 42) {
   "render/contourRenderer.js": function(exports, __require) {
 /**
  * Renderer Peta Kontur 2D Berperforma Tinggi (Offscreen Bitmap Cache)
- * Mendukung palet 'pond' (SFLA), 'water' (WCA), dan 'terrain' (Umum).
+ * Dikalibrasi dengan Palet Identitas Resmi ITS (Biru ITS, Medical Tosca FKK, Summer Sky FTK, Kuning Tua ITS).
  * Skala piksel seragam (uniform scale) agar jarak Euclidean seperti radius dmax tetap bulat sempurna.
  */
 
@@ -1040,38 +1005,38 @@ function lerpColor(stops, t) {
 }
 
 const PALETTES = {
-  // Kolam teratai: cekungan terdalam zamrud gelap bercahaya -> tepi kolam lumut hangat
+  // Kolam teratai SFLA: palung Navy ITS (#03132B) menuju cekungan Medical Tosca FKK (#12B0A2) & tepi Biru Cover
   pond: [
-    [3, 46, 42],
-    [6, 78, 64],
-    [13, 108, 92],
-    [17, 75, 68],
-    [25, 58, 48],
-    [44, 66, 38]
+    [3, 19, 43],
+    [8, 46, 72],
+    [13, 86, 98],
+    [18, 112, 108],
+    [22, 68, 92],
+    [32, 54, 96]
   ],
-  // Siklus air: palung laut biru safir -> lereng sian -> punggung pegunungan batu-salju
+  // Siklus air WCA: palung samudra Navy ITS (#03132B) -> Biru Lambang (#127BBE) -> punggung pegunungan Biru Muda
   water: [
-    [3, 35, 68],
-    [7, 74, 122],
-    [14, 105, 142],
-    [22, 68, 98],
-    [38, 62, 86],
-    [76, 98, 122]
+    [2, 15, 38],
+    [10, 44, 92],
+    [18, 92, 152],
+    [25, 72, 124],
+    [35, 63, 124],
+    [62, 92, 138]
   ],
-  // Peta topografi umum untuk pengantar optimasi
+  // Peta topografi umum: gradasi tenang Navy ITS menuju Biru Cover & Tosca dalam agar titik data kontras tajam
   terrain: [
-    [6, 38, 68],
-    [12, 92, 132],
-    [16, 142, 118],
-    [74, 152, 76],
-    [168, 142, 48],
-    [198, 98, 56]
+    [3, 19, 43],
+    [10, 38, 76],
+    [16, 68, 114],
+    [18, 94, 122],
+    [24, 58, 96],
+    [30, 46, 82]
   ]
 };
 function createViewport(width, height, objective, paddingRatio = 0.08) {
   const domainSpan = objective.max - objective.min;
   const usable = Math.min(width, height) * (1 - paddingRatio * 2);
-  const scale = Math.max(1, usable / domainSpan); // piksel per 1 satuan koordinat
+  const scale = Math.max(1, usable / domainSpan);
   const cx = width / 2;
   const cy = height / 2;
   const mid = (objective.min + objective.max) / 2;
@@ -1117,13 +1082,13 @@ class ContourMapCache {
 
     ctx.drawImage(this.offscreen, 0, 0, width, height);
 
-    // Gambar batas domain pencarian yang halus
+    // Batas domain pencarian teknis (Biru Muda Lambang ITS #75BDE0)
     const topLeft = vp.worldToScreen(objective.min, objective.max);
     const botRight = vp.worldToScreen(objective.max, objective.min);
     ctx.save();
-    ctx.strokeStyle = 'rgba(226, 232, 240, 0.22)';
-    ctx.lineWidth = 1.25;
-    ctx.setLineDash([6, 6]);
+    ctx.strokeStyle = 'rgba(117, 189, 224, 0.26)';
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([5, 5]);
     ctx.strokeRect(
       topLeft.x,
       topLeft.y,
@@ -1132,9 +1097,9 @@ class ContourMapCache {
     );
     ctx.setLineDash([]);
 
-    // Garis sumbu tipis melalui (0,0)
+    // Garis sumbu kartesian melalui (0, 0)
     const origin = vp.worldToScreen(0, 0);
-    ctx.strokeStyle = 'rgba(226, 232, 240, 0.09)';
+    ctx.strokeStyle = 'rgba(117, 189, 224, 0.12)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(topLeft.x, origin.y);
@@ -1143,7 +1108,18 @@ class ContourMapCache {
     ctx.lineTo(origin.x, botRight.y);
     ctx.stroke();
 
-    // Tampilkan penanda global optimum jika diaktifkan (PRD Bagian 10)
+    // Label koordinat domain tipis di sudut bawah peta agar tidak bertumpuk dengan HUD atas
+    if (width >= 320) {
+      const labelY = Math.min(botRight.y - 10, height - 10);
+      ctx.font = '600 10px "Plus Jakarta Sans", sans-serif';
+      ctx.fillStyle = 'rgba(184, 197, 217, 0.64)';
+      ctx.textAlign = 'left';
+      ctx.fillText(`min (${objective.min}, ${objective.min})`, topLeft.x + 8, labelY);
+      ctx.textAlign = 'right';
+      ctx.fillText(`max (${objective.max}, ${objective.max})`, botRight.x - 8, labelY);
+    }
+
+    // Penanda Global Optimum (Kuning Tua Logo ITS #FDBB16)
     if (options.showOptimum !== false) {
       const optPos = vp.worldToScreen(objective.optimum.x, objective.optimum.y);
       this.drawOptimumStar(ctx, optPos.x, optPos.y);
@@ -1154,7 +1130,6 @@ class ContourMapCache {
   }
 
   buildOffscreen(width, height, objective, paletteName, vp) {
-    // Render pada resolusi 1/2 untuk kecepatan pembentukan awal (< 8ms), lalu haluskan
     const scaleDown = 2;
     const rw = Math.max(2, Math.ceil(width / scaleDown));
     const rh = Math.max(2, Math.ceil(height / scaleDown));
@@ -1174,7 +1149,6 @@ class ContourMapCache {
       for (let px = 0; px < rw; px++) {
         const world = vp.screenToWorld((px + 0.5) * scaleDown, (py + 0.5) * scaleDown);
         const raw = objective.evaluate(world.x, world.y);
-        // Kurva gamma lembut agar lembah dekat 0 terlihat jelas konturnya
         const norm = Math.pow(Math.min(1, Math.max(0, raw / maxVal)), 0.58);
         normField[py * rw + px] = norm;
       }
@@ -1187,7 +1161,6 @@ class ContourMapCache {
         const n = normField[idx];
         const rgb = lerpColor(stops, n);
 
-        // Deteksi garis kontur (isoline) antar piksel tetangga
         let isContour = false;
         if (px > 0 && py > 0) {
           const bCurr = Math.floor(n * numBands);
@@ -1200,9 +1173,9 @@ class ContourMapCache {
 
         const p = idx * 4;
         if (isContour) {
-          data[p] = Math.min(255, rgb[0] + 34);
+          data[p] = Math.min(255, rgb[0] + 30);
           data[p + 1] = Math.min(255, rgb[1] + 42);
-          data[p + 2] = Math.min(255, rgb[2] + 44);
+          data[p + 2] = Math.min(255, rgb[2] + 54);
           data[p + 3] = 255;
         } else {
           data[p] = rgb[0];
@@ -1223,17 +1196,16 @@ class ContourMapCache {
     fctx.imageSmoothingQuality = 'high';
     fctx.drawImage(smallCanvas, 0, 0, rw, rh, 0, 0, width, height);
 
-    // Vignette halus di tepi kanvas agar fokus mata ke tengah peta
     const grad = fctx.createRadialGradient(
       width / 2,
       height / 2,
-      Math.min(width, height) * 0.32,
+      Math.min(width, height) * 0.34,
       width / 2,
       height / 2,
-      Math.max(width, height) * 0.72
+      Math.max(width, height) * 0.74
     );
     grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    grad.addColorStop(1, 'rgba(3, 9, 17, 0.48)');
+    grad.addColorStop(1, 'rgba(3, 19, 43, 0.52)');
     fctx.fillStyle = grad;
     fctx.fillRect(0, 0, width, height);
 
@@ -1244,20 +1216,18 @@ class ContourMapCache {
     ctx.save();
     ctx.translate(x, y);
 
-    // Lingkaran pendaran target global
-    const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, 22);
-    glow.addColorStop(0, 'rgba(251, 191, 36, 0.75)');
-    glow.addColorStop(1, 'rgba(251, 191, 36, 0)');
+    const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, 20);
+    glow.addColorStop(0, 'rgba(253, 187, 22, 0.72)');
+    glow.addColorStop(1, 'rgba(253, 187, 22, 0)');
     ctx.fillStyle = glow;
     ctx.beginPath();
-    ctx.arc(0, 0, 22, 0, Math.PI * 2);
+    ctx.arc(0, 0, 20, 0, Math.PI * 2);
     ctx.fill();
 
-    // Bintang 5 sudut
     ctx.beginPath();
     const spikes = 5;
-    const outerR = 10;
-    const innerR = 4.5;
+    const outerR = 9.5;
+    const innerR = 4.2;
     for (let i = 0; i < spikes * 2; i++) {
       const r = i % 2 === 0 ? outerR : innerR;
       const angle = (i * Math.PI) / spikes - Math.PI / 2;
@@ -1267,9 +1237,9 @@ class ContourMapCache {
       else ctx.lineTo(sx, sy);
     }
     ctx.closePath();
-    ctx.fillStyle = '#fde047';
-    ctx.strokeStyle = '#78350f';
-    ctx.lineWidth = 1.8;
+    ctx.fillStyle = '#fdbb16';
+    ctx.strokeStyle = '#03132b';
+    ctx.lineWidth = 1.6;
     ctx.fill();
     ctx.stroke();
 
@@ -1290,1174 +1260,656 @@ function syncCanvasSize(canvas) {
   return { ctx, width: w, height: h };
 }
 
-
   exports.createViewport = createViewport;
   exports.syncCanvasSize = syncCanvasSize;
   exports.ContourMapCache = ContourMapCache;
   },
-  "slides/sflaSlides.js": function(exports, __require) {
+  "tabs/tabSfla.js": function(exports, __require) {
 /**
- * Modul Slide SFLA (Slide 4–9) — Metafora Katak di Kolam Teratai (PRD Bagian 7)
+ * Tab 2: Laboratorium Simulasi Shuffled Frog-Leaping Algorithm (SFLA)
+ * Menggabungkan kanvas simulasi live 2D Kolam Teratai, kontrol hiperparameter real-time,
+ * kurva konvergensi, dan meja kerja interaktif 4 tahap mekanisme internal SFLA.
  */
 const {  getObjective  } = __require("core/objectives.js");
 const {  SimulationRunner  } = __require("core/engine.js");
 const {  SFLAEngine  } = __require("algorithms/sfla.js");
 const {  SFLARenderer, MEMEPLEX_COLORS  } = __require("render/sflaRenderer.js");
-const {  syncCanvasSize  } = __require("render/contourRenderer.js");
 const {  renderConvergenceChart  } = __require("render/chart.js");
-const sflaSlides = [
-  // =========================================================================
-  // SLIDE 4: PENGANTAR & METAFORA SFLA
-  // =========================================================================
-  {
-    id: 'sfla-intro',
-    shortTitle: 'SFLA: Metafora Kolam',
-    title: 'Shuffled Frog-Leaping Algorithm (SFLA)',
-    theme: 'sfla',
-    notes: `
-      <ul>
-        <li><strong>Asal-usul:</strong> Diperkenalkan oleh Eusuff &amp; Lansey (2003), menggabungkan pencarian lokal ala <em>PSO</em> (evolusi memetik dalam kelompok) dan pertukaran informasi global ala <em>Shuffled Complex Evolution</em>.</li>
-        <li><strong>Klik 4 kartu di kanan</strong> untuk menyorot arti tiap elemen visual di kolam:
-          <ul>
-            <li>1 ekor katak = 1 kandidat solusi koordinat <code>(x, y)</code>.</li>
-            <li>Dasar kolam (daun teratai pusat) = nilai biaya/fitness terendah.</li>
-            <li>Warna kelompok = <em>Memeplex</em> (kelompok diskusi lokal).</li>
-            <li>Katak bermahkota emas = solusi terbaik global <code>Xg</code>.</li>
-          </ul>
-        </li>
-      </ul>
-    `,
-    mount(container, { reducedMotion }) {
-      container.innerHTML = `
-        <div class="slide-top">
-          <div>
-            <div class="slide-context">Slide 4 · Modul SFLA (1/6): Konsep &amp; Metafora</div>
-            <h1 class="slide-heading">Metafora Katak di Kolam Teratai</h1>
-            <p class="slide-keyline">Setiap katak adalah kandidat solusi yang belajar di kelompok lokal (<em>memeplex</em>) lalu bertukar kabar secara global.</p>
+const {  syncCanvasSize  } = __require("render/contourRenderer.js");
+const tabSfla = {
+  id: 'sfla',
+  label: 'Simulasi SFLA',
+  title: 'Shuffled Frog-Leaping Algorithm (SFLA)',
+  notes: `
+    <p><strong>Panduan Demonstrasi Tab Simulasi SFLA:</strong></p>
+    <ul>
+      <li>Gunakan tombol <strong>Langkah (S)</strong> pada kanvas utama untuk memperlihatkan urutan deterministik mesin SFLA: <code>INIT &rarr; SORT &rarr; PARTITION &rarr; LOCAL_JUMP &rarr; SHUFFLE</code>.</li>
+      <li>Tunjukkan warna serta label <code>M1..Mm</code> pada tubuh katak untuk membuktikan bagaimana pembagian bergilir menyebarkan katak berkualitas tinggi secara adil ke tiap memeplex.</li>
+      <li>Gunakan panel <strong>Meja Kerja Mekanisme Internal SFLA</strong> di bagian bawah untuk mendemonstrasikan 3 skenario lompatan katak terburuk <code>Xw</code> (menuju <code>Xb</code>, menuju <code>Xg</code>, atau reset acak).</li>
+    </ul>
+  `,
+
+  mount(container, { reducedMotion, registerHooks }) {
+    container.innerHTML = `
+      <header class="tab-lead">
+        <div class="tab-lead-main">
+          <div class="tab-breadcrumb">
+            <span class="tab-breadcrumb-dot"></span>
+            <span>Algoritma Memetik · Eusuff &amp; Lansey (2003)</span>
           </div>
+          <h1 class="tab-title">Shuffled Frog-Leaping Algorithm (SFLA)</h1>
+          <p class="tab-desc">
+            Memadukan evolusi memetik lokal di dalam sub-kelompok <strong>Memeplex</strong> (katak terburuk <code>Xw</code> melompat meniru katak terbaik lokal <code>Xb</code> atau global <code>Xg</code>) dengan penyatuan ulang <strong>Shuffle</strong> lintas kelompok secara periodik.
+          </p>
         </div>
-
-        <div class="split-grid">
-          <div class="card-panel canvas-card">
-            <canvas id="sfla-meta-canvas"></canvas>
-          </div>
-
-          <div class="card-panel" style="justify-content:space-between; gap:0.75rem;">
-            <div style="font-size:var(--fs-small); color:var(--theme-primary); font-weight:700;">
-              Klik Elemen untuk Menyorot Pemetaan Visual
-            </div>
-
-            <button type="button" class="btn btn-accent meta-pick" data-focus="frog" style="justify-content:space-between; padding:0.75rem 1rem; text-align:left;">
-              <span style="display:inline-flex; align-items:center; gap:0.65rem;"><span class="role-chip">Xi</span> <span><strong>Seekor Katak</strong> → Kandidat Solusi <code>(x, y)</code></span></span>
-              <span style="font-size:0.85em; color:var(--text-secondary);">Posisi</span>
-            </button>
-
-            <button type="button" class="btn meta-pick" data-focus="memeplex" style="justify-content:space-between; padding:0.75rem 1rem; text-align:left;">
-              <span style="display:inline-flex; align-items:center; gap:0.65rem;"><span class="role-chip">Mm</span> <span><strong>Warna Kelompok</strong> → Memeplex (M1, M2, M3)</span></span>
-              <span style="font-size:0.85em; color:var(--text-secondary);">Lokal</span>
-            </button>
-
-            <button type="button" class="btn meta-pick" data-focus="fitness" style="justify-content:space-between; padding:0.75rem 1rem; text-align:left;">
-              <span style="display:inline-flex; align-items:center; gap:0.65rem;"><span class="role-chip">f(x)</span> <span><strong>Kedalaman Kolam</strong> → Nilai Fitness <code>f(x, y)</code></span></span>
-              <span style="font-size:0.85em; color:var(--text-secondary);">Kualitas</span>
-            </button>
-
-            <button type="button" class="btn meta-pick" data-focus="xg" style="justify-content:space-between; padding:0.75rem 1rem; text-align:left;">
-              <span style="display:inline-flex; align-items:center; gap:0.65rem;"><span class="role-chip" style="color:#fae0a5; border-color:#d8a33a;">Xg</span> <span><strong>Katak Emas</strong> → Terbaik Global (<code>Xg</code>)</span></span>
-              <span style="font-size:0.85em; color:var(--text-secondary);">Target</span>
-            </button>
-
-            <div class="formula-box" id="sfla-meta-caption">
-              Koordinat pijakan katak di permukaan kolam langsung merepresentasikan nilai variabel keputusan yang sedang diuji.
-            </div>
-          </div>
+        <div class="tab-lead-meta">
+          <span class="status-chip tosca">Urutan: Sort &rarr; Partition &rarr; Local Jump &rarr; Shuffle</span>
         </div>
-      `;
+      </header>
 
-      const canvas = container.querySelector('#sfla-meta-canvas');
-      const captionEl = container.querySelector('#sfla-meta-caption');
-      const renderer = new SFLARenderer();
-      const obj = getObjective('sphere');
-
-      const demoState = {
-        phase: 'PARTITION',
-        frogs: [
-          { id: 1, x: 0.25, y: -0.2, prevX: 0.25, prevY: -0.2, fitness: 0.1, memeplex: 0, role: 'global_best', trail: [] },
-          { id: 2, x: -1.6, y: 1.3, prevX: -1.6, prevY: 1.3, fitness: 4.25, memeplex: 0, role: 'member', trail: [] },
-          { id: 3, x: -3.1, y: 2.5, prevX: -3.1, prevY: 2.5, fitness: 15.8, memeplex: 0, role: 'memeplex_worst', trail: [] },
-          { id: 4, x: 1.4, y: 1.5, prevX: 1.4, prevY: 1.5, fitness: 4.21, memeplex: 1, role: 'memeplex_best', trail: [] },
-          { id: 5, x: 3.0, y: 2.3, prevX: 3.0, prevY: 2.3, fitness: 14.2, memeplex: 1, role: 'memeplex_worst', trail: [] },
-          { id: 6, x: -1.5, y: -2.1, prevX: -1.5, prevY: -2.1, fitness: 6.6, memeplex: 2, role: 'memeplex_best', trail: [] },
-          { id: 7, x: 2.5, y: -2.9, prevX: 2.5, prevY: -2.9, fitness: 14.6, memeplex: 2, role: 'memeplex_worst', trail: [] }
-        ],
-        jumps: [],
-        bestFrog: { id: 1, x: 0.25, y: -0.2, fitness: 0.1 }
-      };
-
-      const captions = {
-        frog: 'Koordinat pijakan katak di permukaan kolam merepresentasikan kandidat solusi (x, y) yang sedang dievaluasi.',
-        memeplex: 'Memeplex adalah sub-komunitas katak (M1 hijau, M2 kuning, M3 biru) yang saling meniru secara lokal.',
-        fitness: 'Makin dekat ke cekungan terdalam kolam, makin kecil nilai fungsi biaya (fitness makin unggul).',
-        xg: 'Katak dengan posisi paling rendah di seluruh kolam diberi mahkota emas (Xg) sebagai panutan global.'
-      };
-
-      let focus = 'frog';
-      let rafId = null;
-
-      container.querySelectorAll('.meta-pick').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          focus = btn.dataset.focus;
-          captionEl.textContent = captions[focus];
-          container.querySelectorAll('.meta-pick').forEach((b) => {
-            b.classList.toggle('btn-accent', b === btn);
-          });
-        });
-      });
-
-      function draw(ts) {
-        renderer.render(canvas, demoState, obj, { alpha: 1, showOptimum: true, showTrails: false });
-        const { ctx, width, height } = syncCanvasSize(canvas);
-        const pulse = reducedMotion ? 0 : Math.sin(ts * 0.004) * 5;
-        const scale = (Math.min(width, height) * 0.86) / (obj.max - obj.min);
-        const toScreen = (wx, wy) => ({
-          x: width / 2 + wx * scale,
-          y: height / 2 - wy * scale
-        });
-
-        ctx.save();
-        if (focus === 'frog') {
-          const p = toScreen(-1.6, 1.3);
-          ctx.strokeStyle = '#34d399';
-          ctx.lineWidth = 2.8;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, 22 + pulse, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.font = '700 15px "Plus Jakarta Sans", sans-serif';
-          ctx.fillStyle = '#ecfdf5';
-          ctx.fillText('Katak = Solusi (-1.6, 1.3)', p.x + 28, p.y + 5);
-        } else if (focus === 'memeplex') {
-          [
-            { x: -1.6, y: 1.3, c: MEMEPLEX_COLORS[0], lbl: 'Memeplex M1' },
-            { x: 1.4, y: 1.5, c: MEMEPLEX_COLORS[1], lbl: 'Memeplex M2' },
-            { x: -1.5, y: -2.1, c: MEMEPLEX_COLORS[2], lbl: 'Memeplex M3' }
-          ].forEach((g) => {
-            const p = toScreen(g.x, g.y);
-            ctx.strokeStyle = g.c;
-            ctx.lineWidth = 2.5;
-            ctx.setLineDash([5, 4]);
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, 28 + pulse * 0.5, 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.setLineDash([]);
-            ctx.font = '700 14px "Plus Jakarta Sans", sans-serif';
-            ctx.fillStyle = g.c;
-            ctx.fillText(g.lbl, p.x + 32, p.y + 4);
-          });
-        } else if (focus === 'fitness') {
-          const center = toScreen(0, 0);
-          for (const r of [45, 95, 150]) {
-            ctx.strokeStyle = 'rgba(253, 224, 71, 0.45)';
-            ctx.lineWidth = 1.8;
-            ctx.beginPath();
-            ctx.arc(center.x, center.y, r + pulse * 0.4, 0, Math.PI * 2);
-            ctx.stroke();
-          }
-        } else if (focus === 'xg') {
-          const p = toScreen(0.25, -0.2);
-          ctx.strokeStyle = '#fde047';
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, 26 + pulse, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.font = '700 15px "Plus Jakarta Sans", sans-serif';
-          ctx.fillStyle = '#fde047';
-          ctx.fillText('Xg: Terbaik Global', p.x + 30, p.y - 8);
-        }
-        ctx.restore();
-
-        if (!reducedMotion) {
-          rafId = requestAnimationFrame(draw);
-        }
-      }
-
-      rafId = requestAnimationFrame(draw);
-      return () => {
-        if (rafId) cancelAnimationFrame(rafId);
-      };
-    }
-  },
-
-  // =========================================================================
-  // SLIDE 5: SFLA TAHAP 1-3 (INISIALISASI, URUTKAN, PARTISI BERGILIR)
-  // =========================================================================
-  {
-    id: 'sfla-partition',
-    shortTitle: 'SFLA: Partisi Memeplex',
-    title: 'Tahap 1–3: Urutkan & Partisi Bergilir ke Memeplex',
-    theme: 'sfla',
-    notes: `
-      <ul>
-        <li><strong>Mengapa dibagi bergilir (round-robin), bukan dipotong blok langsung?</strong></li>
-        <li>Jika katak #1–#4 semuanya masuk M1 dan #9–#12 masuk M3, maka M3 hanya berisi katak buruk dan tidak punya guru yang pintar!</li>
-        <li>Dengan pembagian bergilir (<code>#1→M1, #2→M2, #3→M3, #4→M1...</code>), <strong>setiap memeplex memiliki campuran katak kuat dan katak lemah yang seimbang</strong>.</li>
-        <li>Klik tombol tahap 1 → 2 → 3 di bawah untuk memperlihatkan animasinya secara langsung!</li>
-      </ul>
-    `,
-    mount(container, { reducedMotion }) {
-      container.innerHTML = `
-        <div class="slide-top">
-          <div>
-            <div class="slide-context">Slide 5 · Modul SFLA (2/6): Tahap 1 s.d. 3</div>
-            <h1 class="slide-heading">Urutkan Fitness &amp; Partisi Bergilir (Round-Robin)</h1>
-            <p class="slide-keyline">Katak diurutkan dari terbaik ke terburuk, lalu dibagi bergilir agar setiap memeplex seimbang kekuatannya.</p>
-          </div>
-        </div>
-
-        <div class="card-panel" style="flex:1; display:flex; flex-direction:column; gap:0.9rem;">
-          <div class="ctrl-bar" style="justify-content:space-between;">
-            <div style="display:flex; gap:0.55rem; flex-wrap:wrap;" id="part-steps">
-              <button type="button" class="btn btn-accent" data-stage="0">1. Inisialisasi Acak (F = 12)</button>
-              <button type="button" class="btn" data-stage="1">2. Evaluasi &amp; Urutkan (#1..#12)</button>
-              <button type="button" class="btn" data-stage="2">3. Partisi Bergilir ke 3 Memeplex</button>
+      <!-- Laboratorium Utama SFLA (7 Kolom Kanvas : 5 Kolom Kontrol & Telemetri) -->
+      <div class="grid-12">
+        <div class="span-7 panel-flush" data-ui>
+          <div class="stage-caption-bar" data-ui>
+            <div class="seg-group" data-ui id="sfla-obj-group">
+              <button type="button" class="seg-btn active" data-obj="rastrigin">Rastrigin</button>
+              <button type="button" class="seg-btn" data-obj="ackley">Ackley</button>
+              <button type="button" class="seg-btn" data-obj="sphere">Sphere</button>
             </div>
-            <div id="part-hint" style="font-size:var(--fs-ui); font-weight:700; color:var(--theme-primary);">
-              Tahap 1: 12 katak tersebar acak dengan nilai fitness beragam
+            <div style="display:flex; align-items:center; gap:0.85rem; font-size:0.8rem;">
+              <label style="display:inline-flex; align-items:center; gap:0.35rem; cursor:pointer;">
+                <input type="checkbox" id="sfla-chk-trails" checked /> Jejak Lompatan
+              </label>
+              <label style="display:inline-flex; align-items:center; gap:0.35rem; cursor:pointer;">
+                <input type="checkbox" id="sfla-chk-opt" checked /> Target (0, 0)
+              </label>
             </div>
           </div>
 
-          <div class="canvas-card" style="flex:1; border-radius:14px; border:1px solid var(--border-subtle);">
-            <canvas id="partition-anim-canvas"></canvas>
+          <div class="canvas-stage" data-ui>
+            <div class="canvas-hud" data-ui>
+              <div class="hud-status" data-ui>
+                <span class="hud-dot"></span>
+                <span id="sfla-hud-phase">Inisialisasi Kolam</span>
+              </div>
+              <div class="hud-coords" data-ui id="sfla-hud-best">Xg: (0.00, 0.00)</div>
+            </div>
+            <canvas id="sfla-main-canvas"></canvas>
           </div>
-        </div>
-      `;
 
-      const canvas = container.querySelector('#partition-anim-canvas');
-      const hintEl = container.querySelector('#part-hint');
-
-      // 12 katak dengan fitness terdefinisi jelas untuk demo visual
-      const baseFrogs = [
-        { rank: 0, fit: 0.4, rx: 0.48, ry: 0.52 },
-        { rank: 1, fit: 1.1, rx: 0.34, ry: 0.38 },
-        { rank: 2, fit: 1.9, rx: 0.62, ry: 0.42 },
-        { rank: 3, fit: 3.2, rx: 0.24, ry: 0.66 },
-        { rank: 4, fit: 4.5, rx: 0.72, ry: 0.64 },
-        { rank: 5, fit: 5.8, rx: 0.55, ry: 0.25 },
-        { rank: 6, fit: 7.4, rx: 0.18, ry: 0.31 },
-        { rank: 7, fit: 9.1, rx: 0.81, ry: 0.35 },
-        { rank: 8, fit: 11.3, rx: 0.41, ry: 0.78 },
-        { rank: 9, fit: 13.8, rx: 0.85, ry: 0.73 },
-        { rank: 10, fit: 16.2, rx: 0.14, ry: 0.76 },
-        { rank: 11, fit: 19.5, rx: 0.68, ry: 0.19 }
-      ].map((f) => ({ ...f, cx: f.rx, cy: f.ry, tx: f.rx, ty: f.ry }));
-
-      let stage = 0;
-      let rafId = null;
-
-      function updateTargets(newStage) {
-        stage = newStage;
-        container.querySelectorAll('#part-steps .btn').forEach((b) => {
-          b.classList.toggle('btn-accent', Number(b.dataset.stage) === stage);
-        });
-
-        if (stage === 0) {
-          hintEl.textContent = 'Tahap 1: 12 katak tersebar acak di kolam';
-          baseFrogs.forEach((f) => {
-            f.tx = f.rx;
-            f.ty = f.ry;
-          });
-        } else if (stage === 1) {
-          hintEl.textContent = 'Tahap 2: Diurutkan dari fitness terkecil (#1 terbaik) ke terbesar (#12 terburuk)';
-          baseFrogs.forEach((f, idx) => {
-            f.tx = 0.08 + (idx / 11) * 0.84;
-            f.ty = 0.5;
-          });
-        } else {
-          hintEl.textContent = 'Tahap 3: Katak ke-i masuk Memeplex (i mod 3) → tiap kelompok seimbang!';
-          baseFrogs.forEach((f, idx) => {
-            const col = idx % 3; // M1, M2, M3
-            const row = Math.floor(idx / 3); // 0..3
-            f.tx = 0.22 + col * 0.28;
-            f.ty = 0.27 + row * 0.175;
-          });
-        }
-      }
-
-      container.querySelectorAll('#part-steps .btn').forEach((btn) => {
-        btn.addEventListener('click', () => updateTargets(Number(btn.dataset.stage)));
-      });
-
-      function tick() {
-        const { ctx, width, height } = syncCanvasSize(canvas);
-        ctx.clearRect(0, 0, width, height);
-
-        // Gambar kotak kolom Memeplex saat stage === 2
-        if (stage === 2) {
-          for (let col = 0; col < 3; col++) {
-            const boxX = width * (0.22 + col * 0.28) - width * 0.11;
-            const boxY = height * 0.11;
-            const boxW = width * 0.22;
-            const boxH = height * 0.81;
-            const c = MEMEPLEX_COLORS[col];
-
-            ctx.save();
-            ctx.fillStyle = 'rgba(10, 35, 32, 0.72)';
-            ctx.strokeStyle = c;
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.roundRect(boxX, boxY, boxW, boxH, 16);
-            ctx.fill();
-            ctx.stroke();
-
-            ctx.font = '800 18px "Plus Jakarta Sans", sans-serif';
-            ctx.fillStyle = c;
-            ctx.textAlign = 'center';
-            ctx.fillText(`Memeplex M${col + 1}`, boxX + boxW / 2, boxY + 30);
-            ctx.restore();
-          }
-        } else if (stage === 1) {
-          ctx.save();
-          ctx.strokeStyle = 'rgba(52, 211, 153, 0.3)';
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.moveTo(width * 0.06, height * 0.5);
-          ctx.lineTo(width * 0.94, height * 0.5);
-          ctx.stroke();
-
-          ctx.font = '700 15px "Ubuntu Mono", monospace';
-          ctx.fillStyle = '#fde047';
-          ctx.fillText('← TERBAIK (Xg)', width * 0.06, height * 0.34);
-          ctx.textAlign = 'right';
-          ctx.fillStyle = '#fb7185';
-          ctx.fillText('TERBURUK →', width * 0.94, height * 0.34);
-          ctx.restore();
-        }
-
-        // Interpolasi posisi katak
-        for (const f of baseFrogs) {
-          const speed = reducedMotion ? 1 : 0.11;
-          f.cx += (f.tx - f.cx) * speed;
-          f.cy += (f.ty - f.cy) * speed;
-
-          const px = f.cx * width;
-          const py = f.cy * height;
-          const mIdx = f.rank % 3;
-          const color = stage === 2 ? MEMEPLEX_COLORS[mIdx] : stage === 1 && f.rank === 0 ? '#fbbf24' : '#34d399';
-
-          ctx.save();
-          ctx.translate(px, py);
-
-          ctx.beginPath();
-          ctx.arc(0, 0, 21, 0, Math.PI * 2);
-          ctx.fillStyle = f.rank === 0 && stage >= 1 ? '#fbbf24' : color;
-          ctx.strokeStyle = '#041311';
-          ctx.lineWidth = 2.5;
-          ctx.fill();
-          ctx.stroke();
-
-          ctx.font = '800 14px "Ubuntu Mono", monospace';
-          ctx.fillStyle = '#021310';
-          ctx.textAlign = 'center';
-          ctx.fillText(`#${f.rank + 1}`, 0, 5);
-
-          ctx.font = '700 13px "Ubuntu Mono", monospace';
-          ctx.fillStyle = '#e2e8f0';
-          ctx.fillText(`f=${f.fit.toFixed(1)}`, 0, 36);
-
-          // Tandai Xb dan Xw di tiap memeplex pada stage 2
-          if (stage === 2 && f.rank < 3) {
-            ctx.fillStyle = '#fde047';
-            ctx.fillText(f.rank === 0 ? 'Xg / Xb' : 'Xb', 0, -28);
-          } else if (stage === 2 && f.rank >= 9) {
-            ctx.fillStyle = '#fda4af';
-            ctx.fillText('Xw', 0, -28);
-          }
-
-          ctx.restore();
-        }
-
-        rafId = requestAnimationFrame(tick);
-      }
-
-      rafId = requestAnimationFrame(tick);
-      return () => {
-        if (rafId) cancelAnimationFrame(rafId);
-      };
-    }
-  },
-
-  // =========================================================================
-  // SLIDE 6: SFLA TAHAP 4 (EVOLUSI LOKAL & ATURAN LOMPATAN)
-  // =========================================================================
-  {
-    id: 'sfla-leap',
-    shortTitle: 'SFLA: Lompatan Lokal',
-    title: 'Tahap 4: Evolusi Lokal & 3 Skenario Lompatan',
-    theme: 'sfla',
-    notes: `
-      <ul>
-        <li><strong>Hanya katak terburuk (<code>Xw</code>) yang melompat</strong> pada tiap langkah lokal di submemeplex.</li>
-        <li><strong>Urutan 3 percobaan berjenjang:</strong>
-          <ol>
-            <li>Lompat ke arah pemimpin kelompok <code>Xb</code>. Jika posisinya lebih rendah (fitness membaik) → selesai!</li>
-            <li>Jika gagal membaik, coba lompat ke arah pemimpin seluruh kolam <code>Xg</code>.</li>
-            <li>Jika masih gagal membaik, ganti <code>Xw</code> dengan katak acak baru (mencegah kebuntuan lokal).</li>
-          </ol>
-        </li>
-      </ul>
-    `,
-    mount(container, { reducedMotion }) {
-      container.innerHTML = `
-        <div class="slide-top">
-          <div>
-            <div class="slide-context">Slide 6 · Modul SFLA (3/6): Tahap 4</div>
-            <h1 class="slide-heading">Tiga Percobaan Lompatan Katak Terburuk (Xw)</h1>
-            <p class="slide-keyline">Katak terburuk melompat menuju terbaik kelompok (<code>Xb</code>); bila gagal membaik, ia meniru <code>Xg</code> atau diganti katak acak.</p>
+          <div class="stage-caption-bar" data-ui>
+            <span id="sfla-phase-detail">Menyebar populasi katak awal di permukaan kolam.</span>
+            <div class="legend-inline">
+              <span class="legend-item"><span class="swatch-round" style="background:#fdbb16;"></span>Katak Terbaik Global (Xg)</span>
+              <span class="legend-item"><span class="swatch-round" style="background:#12b0a2;"></span>M1</span>
+              <span class="legend-item"><span class="swatch-round" style="background:#26aee4;"></span>M3</span>
+              <span class="legend-item"><span class="swatch-round" style="background:#f47d52;"></span>M4</span>
+            </div>
           </div>
         </div>
 
-        <div class="split-grid">
-          <div class="card-panel canvas-card">
-            <div class="stage-hud-overlay">
-              <div class="stage-badge">
-                <span class="stage-badge-code" id="leap-badge-code">SKENARIO 1</span>
-                <span id="leap-badge-text">Lompatan ke arah Xb berhasil memperbaiki fitness!</span>
+        <div class="span-5 panel" data-ui>
+          <div class="ctrl-toolbar" data-ui>
+            <button type="button" class="btn btn-sfla" id="sfla-btn-play">Mulai (P)</button>
+            <button type="button" class="btn btn-gold" id="sfla-btn-step">Langkah (S)</button>
+            <button type="button" class="btn" id="sfla-btn-cycle">+1 Siklus</button>
+            <button type="button" class="btn" id="sfla-btn-reset">Reset (R)</button>
+          </div>
+
+          <div class="kpi-strip" data-ui>
+            <div class="kpi-cell" data-ui>
+              <span class="kpi-label">Siklus Global</span>
+              <span class="kpi-val" id="sfla-kpi-iter">0 / 40</span>
+              <span class="kpi-sub" id="sfla-kpi-local">Lokal: 0 / 3</span>
+            </div>
+            <div class="kpi-cell" data-ui>
+              <span class="kpi-label">Terbaik Global f(Xg)</span>
+              <span class="kpi-val gold" id="sfla-kpi-best">0.000</span>
+              <span class="kpi-sub">Target minimum: 0</span>
+            </div>
+            <div class="kpi-cell" data-ui>
+              <span class="kpi-label">Rata-rata Kolam</span>
+              <span class="kpi-val tosca" id="sfla-kpi-mean">0.000</span>
+              <span class="kpi-sub" id="sfla-kpi-pop">24 katak · 4 memeplex</span>
+            </div>
+          </div>
+
+          <div class="chart-box" data-ui>
+            <canvas id="sfla-chart-canvas"></canvas>
+          </div>
+
+          <div class="panel-navy" data-ui>
+            <div class="panel-header" style="margin-bottom:0.55rem;">
+              <strong style="font-size:0.86rem; color:var(--ink);">Parameter Eksperimen SFLA</strong>
+              <span style="font-size:0.75rem; color:var(--ink-faint);">Perubahan me-reset kolam</span>
+            </div>
+            <div class="param-grid">
+              <div class="param-item">
+                <label for="sfla-inp-pop"><span>Populasi Katak (F)</span><span class="val" id="sfla-val-pop">24</span></label>
+                <input type="range" id="sfla-inp-pop" min="12" max="48" step="4" value="24" />
+              </div>
+              <div class="param-item">
+                <label for="sfla-inp-mem"><span>Jumlah Memeplex (m)</span><span class="val" id="sfla-val-mem">4</span></label>
+                <input type="range" id="sfla-inp-mem" min="2" max="6" step="1" value="4" />
+              </div>
+              <div class="param-item">
+                <label for="sfla-inp-loc"><span>Iterasi Lokal (N)</span><span class="val" id="sfla-val-loc">3</span></label>
+                <input type="range" id="sfla-inp-loc" min="1" max="8" step="1" value="3" />
+              </div>
+              <div class="param-item">
+                <label for="sfla-inp-step"><span>Langkah Maks (Dmax)</span><span class="val" id="sfla-val-step">3.2</span></label>
+                <input type="range" id="sfla-inp-step" min="0.8" max="5.0" step="0.2" value="3.2" />
+              </div>
+              <div class="param-item">
+                <label for="sfla-inp-speed"><span>Kecepatan (langkah/dtk)</span><span class="val" id="sfla-val-speed">2.5</span></label>
+                <input type="range" id="sfla-inp-speed" min="0.5" max="12" step="0.5" value="2.5" />
+              </div>
+              <div class="param-item">
+                <label for="sfla-inp-seed"><span>Seed PRNG</span><span class="val">Tetap</span></label>
+                <input type="number" class="field-input" id="sfla-inp-seed" value="42" min="1" max="99999" />
               </div>
             </div>
-            <canvas id="leap-sandbox-canvas"></canvas>
-          </div>
-
-          <div class="card-panel" style="justify-content:space-between; gap:0.85rem;">
-            <div style="display:flex; flex-direction:column; gap:0.6rem;" id="leap-case-btns">
-              <div style="font-size:var(--fs-small); color:var(--theme-primary); font-weight:700;">
-                Uji Ketiga Cabang Aturan Lompatan
-              </div>
-              <button type="button" class="btn btn-accent" data-case="xb" style="justify-content:flex-start; text-align:left; padding:0.75rem 1rem;">
-                <span class="role-chip">1</span>
-                <span><strong>Ke arah Xb Berhasil:</strong> <code>f(Xbaru) &lt; f(Xw)</code></span>
-              </button>
-              <button type="button" class="btn" data-case="xg" style="justify-content:flex-start; text-align:left; padding:0.75rem 1rem;">
-                <span class="role-chip">2</span>
-                <span><strong>Gagal di Xb → Ke Xg:</strong> Meniru terbaik global</span>
-              </button>
-              <button type="button" class="btn" data-case="rand" style="justify-content:flex-start; text-align:left; padding:0.75rem 1rem;">
-                <span class="role-chip">3</span>
-                <span><strong>Keduanya Gagal → Acak Baru:</strong> Sensor eksplorasi ↺</span>
-              </button>
-            </div>
-
-            <div class="formula-box" id="leap-formula">
-              <code>X_baru = Xw + r · (Xb − Xw), &nbsp; r ∈ [0, 1], &nbsp; ‖ΔX‖ ≤ Dmax</code>
-            </div>
-
-            <p id="leap-explain" style="margin:0; font-size:var(--fs-ui); color:var(--text-secondary);">
-              Faktor acak <code>r</code> membuat katak mendarat di antara posisinya saat ini dan sang pemimpin kelompok, dibatasi langkah maksimum <code>Dmax</code>.
-            </p>
           </div>
         </div>
-      `;
+      </div>
 
-      const canvas = container.querySelector('#leap-sandbox-canvas');
-      const badgeCode = container.querySelector('#leap-badge-code');
-      const badgeText = container.querySelector('#leap-badge-text');
-      const formulaEl = container.querySelector('#leap-formula');
-      const explainEl = container.querySelector('#leap-explain');
-      const renderer = new SFLARenderer();
-      const obj = getObjective('rastrigin');
-
-      let activeCase = 'xb';
-      let animStart = performance.now();
-      let rafId = null;
-
-      function setScenario(c) {
-        activeCase = c;
-        animStart = performance.now();
-        container.querySelectorAll('#leap-case-btns .btn').forEach((b) => {
-          b.classList.toggle('btn-accent', b.dataset.case === c);
-        });
-        if (c === 'xb') {
-          badgeCode.textContent = 'PERCOBAAN 1 [OK]';
-          badgeText.textContent = 'Xw melompat ke arah Xb dan mendarat di cekungan lebih rendah!';
-          formulaEl.innerHTML = '<code>X_baru = Xw + r · (Xb − Xw), &nbsp; f(X_baru) &lt; f(Xw)</code>';
-          explainEl.textContent = 'Mayoritas langkah lokal berhasil pada percobaan pertama menuju pemimpin memeplex (Xb).';
-        } else if (c === 'xg') {
-          badgeCode.textContent = 'PERCOBAAN 2 [OK]';
-          badgeText.textContent = 'Lompatan ke Xb terhalang bukit → beralih melompat ke Xg!';
-          formulaEl.innerHTML = '<code>X_baru = Xw + r · (Xg − Xw) &nbsp; [setelah arah Xb gagal]</code>';
-          explainEl.textContent = 'Garis merah putus-putus menunjukkan percobaan ke Xb mendarat di punggung bukit, lalu Xw berhasil menuju Xg.';
-        } else {
-          badgeCode.textContent = 'PERCOBAAN 3 ↺';
-          badgeText.textContent = 'Terjebak punggung bukit → diganti katak baru di posisi acak!';
-          formulaEl.innerHTML = '<code>X_baru = LB + rand · (UB − LB) &nbsp; [Sensor Eksplorasi]</code>';
-          explainEl.textContent = 'Jika arah Xb maupun Xg sama-sama memburuk, katak baru muncul acak agar populasi tidak buntu.';
-        }
-      }
-
-      container.querySelectorAll('#leap-case-btns .btn').forEach((b) => {
-        b.addEventListener('click', () => setScenario(b.dataset.case));
-      });
-
-      function tick(now) {
-        const elapsed = ((now - animStart) % 2400) / 2400;
-        const alpha = reducedMotion ? 1 : Math.min(1, elapsed * 1.45);
-
-        const xwStart = { x: -3.4, y: -2.6 };
-        const xbPos = { x: -1.95, y: 1.95 };
-        const xgPos = { x: 0.0, y: 0.0 };
-
-        let toPos = { x: -2.02, y: 0.98 };
-        let jumpType = 'XB_SUCCESS';
-        if (activeCase === 'xg') {
-          toPos = { x: -1.0, y: -0.95 };
-          jumpType = 'XG_SUCCESS';
-        } else if (activeCase === 'rand') {
-          toPos = { x: 2.95, y: -1.98 };
-          jumpType = 'RANDOM_RESET';
-        }
-
-        const state = {
-          phase: 'LOCAL_JUMP',
-          frogs: [
-            { id: 1, x: xgPos.x, y: xgPos.y, prevX: xgPos.x, prevY: xgPos.y, fitness: 0, memeplex: 1, role: 'global_best', trail: [] },
-            { id: 2, x: xbPos.x, y: xbPos.y, prevX: xbPos.x, prevY: xbPos.y, fitness: 7.8, memeplex: 0, role: 'memeplex_best', trail: [] },
-            { id: 3, x: toPos.x, y: toPos.y, prevX: xwStart.x, prevY: xwStart.y, fitness: 9.0, memeplex: 0, role: 'memeplex_worst', trail: [] }
-          ],
-          jumps: [
-            {
-              frogId: 3,
-              memeplex: 0,
-              fromX: xwStart.x,
-              fromY: xwStart.y,
-              toX: toPos.x,
-              toY: toPos.y,
-              failedXbX: xbPos.x,
-              failedXbY: xbPos.y,
-              type: jumpType,
-              improved: activeCase !== 'rand',
-              triedXbFailed: activeCase !== 'xb'
-            }
-          ],
-          bestFrog: { id: 1, x: 0, y: 0, fitness: 0 }
-        };
-
-        renderer.render(canvas, state, obj, { alpha, showOptimum: true, showTrails: false });
-        rafId = requestAnimationFrame(tick);
-      }
-
-      rafId = requestAnimationFrame(tick);
-      return () => {
-        if (rafId) cancelAnimationFrame(rafId);
-      };
-    }
-  },
-
-  // =========================================================================
-  // SLIDE 7: SFLA TAHAP 5 (SHUFFLE GLOBAL)
-  // =========================================================================
-  {
-    id: 'sfla-shuffle',
-    shortTitle: 'SFLA: Shuffle Global',
-    title: 'Tahap 5: Pengacakan Ulang (Shuffle) Antar-Memeplex',
-    theme: 'sfla',
-    notes: `
-      <ul>
-        <li><strong>Mengapa disebut "Shuffled" Frog-Leaping?</strong> Inilah jantung pertukaran informasi globalnya!</li>
-        <li>Setelah tiap memeplex berevolusi sendiri-sendiri sebanyak <code>N</code> langkah, mereka bisa punya "budaya lokal" yang sempit.</li>
-        <li>Dengan <strong>Shuffle</strong>, semua katak dilebur kembali ke satu kolam besar, diurutkan ulang, lalu dibagi ke memeplex baru sehingga pengetahuan dari M1 menular ke M2 dan M3!</li>
-      </ul>
-    `,
-    mount(container, { reducedMotion }) {
-      container.innerHTML = `
-        <div class="slide-top">
+      <!-- Meja Kerja Interaktif Mekanisme Internal SFLA -->
+      <section class="panel" data-ui>
+        <div class="panel-header">
           <div>
-            <div class="slide-context">Slide 7 · Modul SFLA (4/6): Tahap 5</div>
-            <h1 class="slide-heading">Shuffle: Menyatukan Temuan dari Seluruh Kelompok</h1>
-            <p class="slide-keyline">Seluruh katak dikumpulkan kembali, diurutkan ulang, dan dibagi ke memeplex baru agar informasi terbaik menyebar global.</p>
+            <h2 class="panel-title">Bedah Mekanisme Internal &amp; Formulasi Matematis SFLA</h2>
+            <p class="panel-subtitle">Pilih sub-modul di bawah untuk menguji cara kerja partisi memeplex, 3 aturan lompatan Xw, dan rumus lengkap SFLA.</p>
           </div>
         </div>
 
-        <div class="card-panel" style="flex:1; display:flex; flex-direction:column; gap:0.9rem;">
-          <div class="ctrl-bar" style="justify-content:space-between;">
-            <div style="display:flex; gap:0.55rem; flex-wrap:wrap;" id="shuf-btns">
-              <button type="button" class="btn btn-accent" data-step="0">Sebelum Shuffle (Terpisah Lokal)</button>
-              <button type="button" class="btn" data-step="1">Lebur &amp; Urutkan Ulang Global</button>
-              <button type="button" class="btn" data-step="2">Memeplex Baru (Lintas Kelompok!)</button>
-            </div>
-            <span id="shuf-caption" style="font-size:var(--fs-ui); font-weight:700; color:var(--theme-primary);">
-              Tiap kelompok selesai melakukan pencarian lokal di area masing-masing
-            </span>
-          </div>
-
-          <div class="canvas-card" style="flex:1; border-radius:14px; border:1px solid var(--border-subtle);">
-            <canvas id="shuffle-demo-canvas"></canvas>
-          </div>
-        </div>
-      `;
-
-      const canvas = container.querySelector('#shuffle-demo-canvas');
-      const capEl = container.querySelector('#shuf-caption');
-
-      // 9 katak awalnya di 3 memeplex lama (oldM), setelah evolusi lokal fitness-nya berubah sehingga memeplex baru (newM) berbeda!
-      const nodes = [
-        { id: 'A', oldM: 0, newRank: 0, newM: 0 },
-        { id: 'B', oldM: 2, newRank: 1, newM: 1 },
-        { id: 'C', oldM: 0, newRank: 2, newM: 2 },
-        { id: 'D', oldM: 1, newRank: 3, newM: 0 },
-        { id: 'E', oldM: 2, newRank: 4, newM: 1 },
-        { id: 'F', oldM: 1, newRank: 5, newM: 2 },
-        { id: 'G', oldM: 0, newRank: 6, newM: 0 },
-        { id: 'H', oldM: 1, newRank: 7, newM: 1 },
-        { id: 'I', oldM: 2, newRank: 8, newM: 2 }
-      ].map((n, i) => ({ ...n, cx: 0.5, cy: 0.5, tx: 0.5, ty: 0.5, slotOld: Math.floor(i / 3) }));
-
-      let stepMode = 0;
-      let rafId = null;
-
-      function applyStep(s) {
-        stepMode = s;
-        container.querySelectorAll('#shuf-btns .btn').forEach((b) => {
-          b.classList.toggle('btn-accent', Number(b.dataset.step) === s);
-        });
-
-        if (s === 0) {
-          capEl.textContent = '3 memeplex lama terpisah setelah evolusi lokal selesai';
-          const counts = [0, 0, 0];
-          nodes.forEach((n) => {
-            const idxInM = counts[n.oldM]++;
-            const cx = 0.2 + n.oldM * 0.3;
-            const angle = (idxInM / 3) * Math.PI * 2 - Math.PI / 2;
-            n.tx = cx + Math.cos(angle) * 0.065;
-            n.ty = 0.52 + Math.sin(angle) * 0.14;
-          });
-        } else if (s === 1) {
-          capEl.textContent = 'Semua katak digabung ke kolam pusat dan diurutkan ulang menurut fitness terbaru';
-          nodes.forEach((n) => {
-            n.tx = 0.12 + (n.newRank / 8) * 0.76;
-            n.ty = 0.52;
-          });
-        } else {
-          capEl.textContent = 'Partisi ulang! Perhatikan katak bertukar warna kelompok & membawa informasi baru';
-          const counts = [0, 0, 0];
-          nodes.forEach((n) => {
-            const idxInM = counts[n.newM]++;
-            const cx = 0.2 + n.newM * 0.3;
-            const angle = (idxInM / 3) * Math.PI * 2 - Math.PI / 2;
-            n.tx = cx + Math.cos(angle) * 0.065;
-            n.ty = 0.52 + Math.sin(angle) * 0.14;
-          });
-        }
-      }
-
-      applyStep(0);
-      nodes.forEach((n) => {
-        n.cx = n.tx;
-        n.cy = n.ty;
-      });
-
-      container.querySelectorAll('#shuf-btns .btn').forEach((b) => {
-        b.addEventListener('click', () => applyStep(Number(b.dataset.step)));
-      });
-
-      function tick() {
-        const { ctx, width, height } = syncCanvasSize(canvas);
-        ctx.clearRect(0, 0, width, height);
-
-        if (stepMode === 0 || stepMode === 2) {
-          for (let m = 0; m < 3; m++) {
-            const cx = width * (0.2 + m * 0.3);
-            const cy = height * 0.52;
-            const r = Math.min(width, height) * 0.23;
-            ctx.save();
-            ctx.beginPath();
-            ctx.arc(cx, cy, r, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(16, 185, 129, 0.07)';
-            ctx.strokeStyle = MEMEPLEX_COLORS[m];
-            ctx.lineWidth = 2;
-            ctx.setLineDash([6, 5]);
-            ctx.fill();
-            ctx.stroke();
-            ctx.setLineDash([]);
-            ctx.font = '800 18px "Plus Jakarta Sans", sans-serif';
-            ctx.fillStyle = MEMEPLEX_COLORS[m];
-            ctx.textAlign = 'center';
-            ctx.fillText(
-              stepMode === 0 ? `Memeplex Lama M${m + 1}` : `Memeplex Baru M${m + 1}`,
-              cx,
-              cy - r - 14
-            );
-            ctx.restore();
-          }
-        } else {
-          ctx.save();
-          ctx.beginPath();
-          ctx.roundRect(width * 0.07, height * 0.32, width * 0.86, height * 0.4, 24);
-          ctx.fillStyle = 'rgba(16, 185, 129, 0.09)';
-          ctx.strokeStyle = '#34d399';
-          ctx.lineWidth = 2;
-          ctx.fill();
-          ctx.stroke();
-          ctx.font = '800 18px "Plus Jakarta Sans", sans-serif';
-          ctx.fillStyle = '#ecfdf5';
-          ctx.textAlign = 'center';
-          ctx.fillText('KOLAM GABUNGAN GLOBAL (TERURUT TERBAIK → TERBURUK)', width * 0.5, height * 0.25);
-          ctx.restore();
-        }
-
-        for (const n of nodes) {
-          const sp = reducedMotion ? 1 : 0.1;
-          n.cx += (n.tx - n.cx) * sp;
-          n.cy += (n.ty - n.cy) * sp;
-
-          const px = n.cx * width;
-          const py = n.cy * height;
-          const activeColor = stepMode === 2 ? MEMEPLEX_COLORS[n.newM] : MEMEPLEX_COLORS[n.oldM];
-
-          ctx.save();
-          ctx.translate(px, py);
-
-          // Cincin luar menunjukkan warna kelompok asal saat sudah berpindah ke kelompok baru!
-          if (stepMode === 2 && n.oldM !== n.newM) {
-            ctx.beginPath();
-            ctx.arc(0, 0, 27, 0, Math.PI * 2);
-            ctx.strokeStyle = MEMEPLEX_COLORS[n.oldM];
-            ctx.lineWidth = 3;
-            ctx.stroke();
-          }
-
-          ctx.beginPath();
-          ctx.arc(0, 0, 21, 0, Math.PI * 2);
-          ctx.fillStyle = activeColor;
-          ctx.strokeStyle = '#041311';
-          ctx.lineWidth = 2.5;
-          ctx.fill();
-          ctx.stroke();
-
-          ctx.font = '800 15px "Ubuntu Mono", monospace';
-          ctx.fillStyle = '#021310';
-          ctx.textAlign = 'center';
-          ctx.fillText(n.id, 0, 5);
-
-          if (stepMode === 2 && n.oldM !== n.newM) {
-            ctx.font = '700 11px "Ubuntu Mono", monospace';
-            ctx.fillStyle = '#fde047';
-            ctx.fillText(`dari M${n.oldM + 1}`, 0, 38);
-          }
-
-          ctx.restore();
-        }
-
-        rafId = requestAnimationFrame(tick);
-      }
-
-      rafId = requestAnimationFrame(tick);
-      return () => {
-        if (rafId) cancelAnimationFrame(rafId);
-      };
-    }
-  },
-
-  // =========================================================================
-  // SLIDE 8: RINGKASAN SIKLUS LENGKAP SFLA
-  // =========================================================================
-  {
-    id: 'sfla-cycle',
-    shortTitle: 'SFLA: Alur Lengkap',
-    title: 'Alur Lengkap Algoritma SFLA',
-    theme: 'sfla',
-    notes: `
-      <ul>
-        <li>Gunakan slide ini sebagai peta besar sebelum kita menyalakan simulasi SFLA penuh di slide berikutnya.</li>
-        <li>Klik tahap mana pun pada kartu 1–6 untuk melihat rumus dan perannya terhadap eksplorasi/eksploitasi.</li>
-      </ul>
-    `,
-    mount(container) {
-      const stages = [
-        {
-          num: 'Tahap 1',
-          name: 'Inisialisasi Populasi',
-          role: 'Eksplorasi Awal',
-          formula: 'Xi = LB + rand · (UB − LB),  i = 1..F',
-          desc: 'Sebar F ekor katak secara acak merata di seluruh ruang pencarian kolam.'
-        },
-        {
-          num: 'Tahap 2',
-          name: 'Evaluasi & Urutkan',
-          role: 'Seleksi Pemimpin',
-          formula: 'Urutkan f(X1) ≤ f(X2) ≤ ... ≤ f(XF);  Xg = X1',
-          desc: 'Hitung nilai fitness tiap katak dan tandai katak terbaik global dengan mahkota emas (Xg).'
-        },
-        {
-          num: 'Tahap 3',
-          name: 'Partisi ke Memeplex',
-          role: 'Pembentukan Komunitas',
-          formula: 'Katak peringkat ke-k → Memeplex (k mod m)',
-          desc: 'Bagi katak secara bergilir ke m kelompok agar tiap kelompok memiliki katak unggul dan lemah.'
-        },
-        {
-          num: 'Tahap 4',
-          name: 'Evolusi Lokal (× N)',
-          role: 'Eksploitasi Terarah + Sensor',
-          formula: 'Xbaru = Xw + r·(Xb − Xw)  →  Xg  →  Acak',
-          desc: 'Di tiap submemeplex, katak terburuk melompat ke Xb, atau Xg, atau diganti acak sebanyak N kali.'
-        },
-        {
-          num: 'Tahap 5',
-          name: 'Shuffle Global',
-          role: 'Pertukaran Informasi Global',
-          formula: 'Gabung seluruh m memeplex → Urutkan ulang F katak',
-          desc: 'Satukan kembali semua kelompok sehingga temuan lokal menyebar ke seluruh populasi.'
-        },
-        {
-          num: 'Tahap 6',
-          name: 'Cek Terminasi',
-          role: 'Kriteria Berhenti',
-          formula: 'Ulangi Tahap 3–5 hingga iterasi = Iterasi_Maks',
-          desc: 'Jika belum selesai, bagi ulang ke memeplex baru; jika selesai, keluarkan Xg sebagai solusi optimal.'
-        }
-      ];
-
-      container.innerHTML = `
-        <div class="slide-top">
-          <div>
-            <div class="slide-context">Slide 8 · Modul SFLA (5/6): Diagram Siklus</div>
-            <h1 class="slide-heading">Enam Tahap Siklus SFLA</h1>
-            <p class="slide-keyline">Perpaduan lompatan lokal di dalam memeplex dan <em>shuffle</em> global menciptakan konvergensi yang tangguh.</p>
-          </div>
+        <div class="subtab-bar" data-ui id="sfla-subtabs">
+          <button type="button" class="subtab-btn active" data-ui data-sub="partition">Partisi Bergilir (Round-Robin)</button>
+          <button type="button" class="subtab-btn" data-ui data-sub="leap">Sandbox 3 Skenario Lompatan Xw</button>
+          <button type="button" class="subtab-btn" data-ui data-sub="metaphor">Pemetaan Metafora &amp; Shuffle</button>
+          <button type="button" class="subtab-btn" data-ui data-sub="formulas">Rumus &amp; Tabel 6 Tahap</button>
         </div>
 
-        <div style="flex:1; display:flex; flex-direction:column; justify-content:space-between; gap:1rem;">
-          <div id="sfla-flow-cards" style="display:grid; grid-template-columns:repeat(3, 1fr); gap:0.9rem; flex:1;">
-            ${stages
-              .map(
-                (s, i) => `
-              <button type="button" class="card-panel flow-step-card" data-idx="${i}" style="text-align:left; cursor:pointer; justify-content:space-between; border-color:${i === 3 ? 'var(--theme-primary)' : 'var(--border-subtle)'}; background:${i === 3 ? 'var(--theme-tint)' : 'var(--bg-card)'};">
-                <div>
-                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
-                    <span class="tabular" style="font-size:var(--fs-ui); font-weight:800; color:var(--theme-primary);">${s.num}</span>
-                    <span style="font-size:var(--fs-small); font-weight:600; padding:0.18rem 0.55rem; border-radius:999px; background:var(--bg-elevated); color:var(--theme-secondary);">${s.role}</span>
-                  </div>
-                  <div style="font-size:var(--fs-h2); font-weight:800; margin-bottom:0.35rem;">${s.name}</div>
-                  <div style="font-size:var(--fs-ui); color:var(--text-secondary);">${s.desc}</div>
+        <!-- Sub-view 1: Partisi Round-Robin -->
+        <div id="sfla-sub-partition" class="sfla-subview">
+          <div class="grid-12" style="margin-top:0.35rem;">
+            <div class="span-5 panel-navy" data-ui>
+              <strong style="color:var(--ink); font-size:0.92rem;">Aturan Pembagian Modulo <code>k = idx mod m</code></strong>
+              <p class="panel-subtitle" style="margin:0.35rem 0 0.75rem;">
+                Setelah seluruh <code>F</code> katak diurutkan dari fitness terbaik (peringkat 1) ke terburuk (peringkat F), katak dibagikan secara bergilir seperti membagikan kartu: peringkat 1 masuk M1, peringkat 2 masuk M2, dan seterusnya hingga berputar kembali ke M1.
+              </p>
+              <div class="param-grid">
+                <div class="param-item">
+                  <label for="sfla-rr-f"><span>Contoh Populasi (F)</span><span class="val" id="sfla-rr-f-val">12</span></label>
+                  <input type="range" id="sfla-rr-f" min="6" max="20" step="2" value="12" />
                 </div>
-              </button>
-            `
-              )
-              .join('')}
-          </div>
-
-          <div class="formula-box" id="sfla-cycle-detail" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
-            <span><strong>Tahap 4 (Evolusi Lokal):</strong> <code>Xbaru = Xw + r·(Xb − Xw) → Xg → Acak</code></span>
-            <span style="color:var(--theme-primary); font-size:var(--fs-small);">Klik kartu tahap di atas untuk melihat rumus detail</span>
-          </div>
-        </div>
-      `;
-
-      const detailBox = container.querySelector('#sfla-cycle-detail');
-      const cards = container.querySelectorAll('.flow-step-card');
-
-      cards.forEach((card) => {
-        card.addEventListener('click', () => {
-          const idx = Number(card.dataset.idx);
-          const st = stages[idx];
-          cards.forEach((c) => {
-            const active = c === card;
-            c.style.borderColor = active ? 'var(--theme-primary)' : 'var(--border-subtle)';
-            c.style.background = active ? 'var(--theme-tint)' : 'var(--bg-card)';
-          });
-          detailBox.innerHTML = `
-            <span><strong>${st.num} (${st.name}):</strong> <code>${st.formula}</code></span>
-            <span style="color:var(--theme-secondary); font-size:var(--fs-small);">${st.role}</span>
-          `;
-        });
-      });
-    }
-  },
-
-  // =========================================================================
-  // SLIDE 9: SIMULASI INTERAKTIF SFLA PENUH (F-03, F-05..F-10, F-13)
-  // =========================================================================
-  {
-    id: 'sfla-sim',
-    shortTitle: 'Simulasi SFLA',
-    title: 'Laboratorium Simulasi Interaktif SFLA',
-    theme: 'sfla',
-    notes: `
-      <ul>
-        <li><strong>Urutan demo yang disarankan di depan dosen:</strong>
-          <ol>
-            <li>Mulai pada fungsi <em>Sphere</em>, klik tombol kuning <strong>Step (S)</strong> 5–6 kali sambil tunjukkan lencana tahap di kiri atas: <code>Inisialisasi → Evaluasi &amp; Urutkan → Partisi Memeplex → Lompatan Lokal → Shuffle Global</code>.</li>
-            <li>Klik <strong>Play (P)</strong> dan tunjukkan kurva konvergensi turun mulus mendekati <code>0.000</code>.</li>
-            <li>Ganti fungsi ke <strong>Rastrigin</strong> (banyak jebakan lokal!) dan jalankan lagi: tunjukkan bagaimana lompatan ke <code>Xg</code> &amp; katak acak menyelamatkan populasi dari lembah lokal!</li>
-            <li>Buka tombol <strong>Parameter</strong> bila ada pertanyaan tentang pengaruh jumlah katak <code>F</code>, memeplex <code>m</code>, atau seed tetap.</li>
-          </ol>
-        </li>
-      </ul>
-    `,
-    mount(container, { reducedMotion, registerHooks }) {
-      container.innerHTML = `
-        <div class="slide-top" style="align-items:center;">
-          <div>
-            <div class="slide-context">Slide 9 · Modul SFLA (6/6): Simulasi Langsung</div>
-            <h1 class="slide-heading" style="font-size:clamp(1.5rem, 2.2vw, 2.6rem);">Simulasi SFLA di Kolam Teratai</h1>
-          </div>
-
-          <div class="ctrl-bar">
-            <button type="button" class="btn btn-accent" id="sfla-btn-play">▶ Play</button>
-            <button type="button" class="btn btn-step" id="sfla-btn-step" title="Maju 1 tahap algoritma (Tombol S)">⏭ Step</button>
-            <button type="button" class="btn" id="sfla-btn-reset" title="Ulangi dari awal (Tombol R)">↺ Reset</button>
-
-            <label class="ctrl-field">
-              <span>Fungsi:</span>
-              <select class="ctrl-select" id="sfla-select-obj">
-                <option value="sphere" selected>Sphere (1 Lembah)</option>
-                <option value="rastrigin">Rastrigin (Banyak Lembah)</option>
-                <option value="ackley">Ackley (Corong Pusat)</option>
-              </select>
-            </label>
-
-            <label class="ctrl-field">
-              <span>Kecepatan:</span>
-              <input type="range" class="ctrl-range" id="sfla-speed" min="0.6" max="12" step="0.3" value="2.8" />
-            </label>
-
-            <button type="button" class="btn" id="sfla-btn-params" aria-expanded="false">Parameter</button>
+                <div class="param-item">
+                  <label for="sfla-rr-m"><span>Jumlah Memeplex (m)</span><span class="val" id="sfla-rr-m-val">3</span></label>
+                  <input type="range" id="sfla-rr-m" min="2" max="5" step="1" value="3" />
+                </div>
+              </div>
+              <div class="formula-block" data-ui style="margin-top:0.75rem;">
+                <code>Memeplex(peringkat i) = ((i - 1) mod m) + 1</code>
+              </div>
+            </div>
+            <div class="span-7">
+              <div id="sfla-rr-output" class="mini-card-grid"></div>
+            </div>
           </div>
         </div>
 
-        <div class="sim-layout">
-          <div class="card-panel canvas-card">
-            <div class="stage-hud-overlay">
-              <div class="stage-badge">
-                <span class="stage-badge-code" id="sfla-hud-code">INIT</span>
-                <span id="sfla-hud-label">Inisialisasi Kolam</span>
-              </div>
-              <div class="hud-metrics">
-                <div class="hud-pill">Siklus: <strong id="sfla-hud-iter">0 / 40</strong></div>
-                <div class="hud-pill">Terbaik Xg: <strong id="sfla-hud-best">0.0000</strong></div>
+        <!-- Sub-view 2: Sandbox 3 Skenario Lompatan Xw -->
+        <div id="sfla-sub-leap" class="sfla-subview hidden">
+          <div class="grid-12" style="margin-top:0.35rem;">
+            <div class="span-7">
+              <div class="canvas-stage-compact" data-ui>
+                <canvas id="sfla-leap-canvas"></canvas>
               </div>
             </div>
-            <canvas id="sfla-sim-canvas"></canvas>
-          </div>
-
-          <div style="display:flex; flex-direction:column; gap:0.85rem; min-height:0;">
-            <div class="card-panel" style="padding:0.9rem 1.1rem; gap:0.45rem;">
-              <div style="font-size:var(--fs-small); color:var(--theme-primary); font-weight:700;">Status Tahap Saat Ini</div>
-              <div id="sfla-stage-desc" style="font-size:var(--fs-ui); font-weight:600; color:var(--text-primary); min-height:2.8em;"></div>
-              <div style="display:flex; gap:0.9rem; flex-wrap:wrap; font-size:var(--fs-small); color:var(--text-muted); padding-top:0.35rem; border-top:1px solid var(--border-subtle);">
-                <span style="color:#fae0a5;">● Emas = <strong>Xg</strong></span>
-                <span style="color:#43bf9c;">━━ Lompat Xb</span>
-                <span style="color:#d8a33a;">━━ Lompat Xg</span>
-                <span style="color:#d95b5b;">╌╌ Acak Baru</span>
+            <div class="span-5 panel-navy" data-ui style="display:flex; flex-direction:column; gap:0.65rem;">
+              <strong style="color:var(--ink); font-size:0.92rem;">Uji Ketiga Aturan Lompatan Katak Terburuk (Xw)</strong>
+              <div style="display:flex; flex-direction:column; gap:0.45rem;">
+                <button type="button" class="btn btn-sfla" data-leap="xb">1. Lompat Menuju Xb (Berhasil Membaik)</button>
+                <button type="button" class="btn btn-gold" data-leap="xg">2. Gagal di Xb &rarr; Lompat Menuju Xg</button>
+                <button type="button" class="btn" data-leap="rand">3. Gagal Keduanya &rarr; Posisi Acak Baru</button>
+              </div>
+              <div class="formula-block" data-ui>
+                <code id="sfla-leap-eq">D = rand() * (Xb - Xw) ; Xw_baru = Xw + D</code>
+                <div class="formula-note" id="sfla-leap-explain">
+                  Katak terburuk mencoba melompat mendekati katak terbaik di dalam memeplex-nya terlebih dahulu.
+                </div>
               </div>
             </div>
-
-            <div class="card-panel canvas-card" style="flex:1; min-height:170px;">
-              <canvas id="sfla-chart-canvas"></canvas>
-            </div>
-
-            <div class="card-panel" style="padding:0.75rem 1rem; flex-direction:row; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
-              <label style="display:inline-flex; align-items:center; gap:0.45rem; font-size:var(--fs-small); font-weight:700; cursor:pointer;">
-                <input type="checkbox" id="sfla-chk-opt" checked style="width:17px; height:17px; accent-color:var(--gold-crown);" />
-                <span>Target Optimum (0, 0)</span>
-              </label>
-              <label style="display:inline-flex; align-items:center; gap:0.45rem; font-size:var(--fs-small); font-weight:700; cursor:pointer;">
-                <input type="checkbox" id="sfla-chk-trail" checked style="width:17px; height:17px; accent-color:var(--theme-primary);" />
-                <span>Jejak Katak</span>
-              </label>
-              <span class="tabular" style="font-size:var(--fs-small); font-weight:700; color:var(--text-muted);" id="sfla-coord-readout">(0.00, 0.00)</span>
-            </div>
-          </div>
-
-          <!-- Collapsible Parameter Panel (F-06) -->
-          <div class="param-drawer hidden" id="sfla-param-drawer">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <strong style="font-size:var(--fs-ui); color:var(--theme-primary);">Parameter Algoritma SFLA</strong>
-              <button type="button" class="close-btn" id="sfla-close-params" aria-label="Tutup Parameter">&times;</button>
-            </div>
-
-            <div class="param-row">
-              <label>Jumlah Katak (F) <span class="val" id="val-sfla-f">24</span></label>
-              <input type="range" class="ctrl-range" style="width:100%;" id="inp-sfla-f" min="8" max="72" step="4" value="24" />
-            </div>
-
-            <div class="param-row">
-              <label>Jumlah Memeplex (m) <span class="val" id="val-sfla-m">4</span></label>
-              <input type="range" class="ctrl-range" style="width:100%;" id="inp-sfla-m" min="2" max="6" step="1" value="4" />
-            </div>
-
-            <div class="param-row">
-              <label>Iterasi Lokal (N) <span class="val" id="val-sfla-n">3</span></label>
-              <input type="range" class="ctrl-range" style="width:100%;" id="inp-sfla-n" min="1" max="10" step="1" value="3" />
-            </div>
-
-            <div class="param-row">
-              <label>Langkah Maksimum (Dmax) <span class="val" id="val-sfla-dmax">3.2</span></label>
-              <input type="range" class="ctrl-range" style="width:100%;" id="inp-sfla-dmax" min="0.8" max="6.0" step="0.2" value="3.2" />
-            </div>
-
-            <div class="param-row">
-              <label for="inp-sfla-seed">Seed Acak (Reprodusibel)</label>
-              <input type="number" class="ctrl-input" id="inp-sfla-seed" value="42" />
-            </div>
-
-            <button type="button" class="btn btn-accent" id="sfla-apply-params" style="margin-top:0.4rem;">
-              Terapkan &amp; Reset Simulasi
-            </button>
           </div>
         </div>
-      `;
 
-      const simCanvas = container.querySelector('#sfla-sim-canvas');
-      const chartCanvas = container.querySelector('#sfla-chart-canvas');
-      const btnPlay = container.querySelector('#sfla-btn-play');
-      const btnStep = container.querySelector('#sfla-btn-step');
-      const btnReset = container.querySelector('#sfla-btn-reset');
-      const selObj = container.querySelector('#sfla-select-obj');
-      const speedInput = container.querySelector('#sfla-speed');
-      const chkOpt = container.querySelector('#sfla-chk-opt');
-      const chkTrail = container.querySelector('#sfla-chk-trail');
+        <!-- Sub-view 3: Metafora & Shuffle -->
+        <div id="sfla-sub-metaphor" class="sfla-subview hidden">
+          <div class="table-wrap" style="margin-top:0.35rem;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Elemen Kolam Teratai</th>
+                  <th>Representasi Matematis Optimasi</th>
+                  <th>Peran dalam Pencarian Solusi</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Seekor Katak</strong></td>
+                  <td>Vektor kandidat solusi <code>X_i = (x_1, x_2, ..., x_d)</code></td>
+                  <td>Menyimpan satu konfigurasi penugasan variabel beserta nilai objektif <code>f(X_i)</code>.</td>
+                </tr>
+                <tr>
+                  <td><strong>Meme (Gagasan Budaya)</strong></td>
+                  <td>Vektor arah dan informasi posisi lompatan</td>
+                  <td>Berbeda dari gen biologis, meme ditularkan secara langsung dalam satu generasi melalui peniruan sosial.</td>
+                </tr>
+                <tr>
+                  <td><strong>Memeplex (M1..Mm)</strong></td>
+                  <td>Sub-populasi hasil partisi bergilir</td>
+                  <td>Menjaga eksploitasi lokal independen pada beberapa lembah fungsi secara paralel.</td>
+                </tr>
+                <tr>
+                  <td><strong>Katak Terbaik Lokal &amp; Global</strong></td>
+                  <td><code>X_b</code> (terbaik memeplex) dan <code>X_g</code> (terbaik kolam)</td>
+                  <td>Menjadi jangkar penarik arah lompatan bagi katak terburuk <code>X_w</code> di setiap memeplex.</td>
+                </tr>
+                <tr>
+                  <td><strong>Shuffle Lintas Kelompok</strong></td>
+                  <td>Penggabungan dan pengurutan ulang seluruh <code>F</code> katak</td>
+                  <td>Menyebarkan temuan lembah terdalam dari satu memeplex ke seluruh populasi pada siklus berikutnya.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
 
-      const hudCode = container.querySelector('#sfla-hud-code');
-      const hudLabel = container.querySelector('#sfla-hud-label');
-      const hudIter = container.querySelector('#sfla-hud-iter');
-      const hudBest = container.querySelector('#sfla-hud-best');
-      const stageDesc = container.querySelector('#sfla-stage-desc');
-      const coordReadout = container.querySelector('#sfla-coord-readout');
+        <!-- Sub-view 4: Rumus & Tabel 6 Tahap -->
+        <div id="sfla-sub-formulas" class="sfla-subview hidden">
+          <div class="grid-12" style="margin-top:0.35rem;">
+            <div class="span-5" style="display:flex; flex-direction:column; gap:0.65rem;">
+              <div class="formula-block" data-ui>
+                <code>D_i = clamp(rand() * (X_b - X_w), -D_max, D_max)</code>
+                <div class="formula-note">Langkah pertama: lompatan terarah menuju pemimpin lokal memeplex.</div>
+              </div>
+              <div class="formula-block" data-ui>
+                <code>D_i = clamp(rand() * (X_g - X_w), -D_max, D_max)</code>
+                <div class="formula-note">Langkah cadangan bila posisi menuju <code>X_b</code> tidak menurunkan nilai <code>f(X)</code>.</div>
+              </div>
+              <div class="formula-block" data-ui>
+                <code>X_w_baru = X_min + rand() * (X_max - X_min)</code>
+                <div class="formula-note">Injeksi keragaman acak murni bila kedua lompatan terarah masih gagal membaik.</div>
+              </div>
+            </div>
+            <div class="span-7 table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Tahap Mesin</th>
+                    <th>Operasi Algoritmik</th>
+                    <th>Kompleksitas / Efek</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td><strong>Inisialisasi</strong></td><td>Bangkitkan <code>F</code> katak seragam di domain <code>[min, max]^d</code> dan hitung <code>f(X)</code>.</td><td>Sampling awal merata</td></tr>
+                  <tr><td><strong>Pengurutan</strong></td><td>Urutkan populasi menaik berdasarkan nilai biaya <code>f(X_1) &le; ... &le; f(X_F)</code>; tetapkan <code>X_g = X_1</code>.</td><td><code>O(F log F)</code></td></tr>
+                  <tr><td><strong>Partisi Memeplex</strong></td><td>Distribusikan katak ke <code>m</code> memeplex menggunakan indeks modulo <code>(i - 1) mod m</code>.</td><td>Kualitas tiap grup seimbang</td></tr>
+                  <tr><td><strong>Evolusi Lokal</strong></td><td>Ulangi <code>N</code> kali per memeplex: perbarui hanya katak terburuk <code>X_w</code> via <code>X_b &rarr; X_g &rarr; Acak</code>.</td><td>Hemat evaluasi fungsi</td></tr>
+                  <tr><td><strong>Shuffle Global</strong></td><td>Satukan kembali seluruh memeplex dan urutkan ulang populasi gabungan.</td><td>Difusi informasi global</td></tr>
+                  <tr><td><strong>Terminasi</strong></td><td>Hentikan saat siklus mencapai <code>Iter_maks</code> atau toleransi konvergensi terpenuhi.</td><td>Menghasilkan <code>X_g</code></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+    `;
 
-      const drawer = container.querySelector('#sfla-param-drawer');
-      const btnParams = container.querySelector('#sfla-btn-params');
-      const inpF = container.querySelector('#inp-sfla-f');
-      const inpM = container.querySelector('#inp-sfla-m');
-      const inpN = container.querySelector('#inp-sfla-n');
-      const inpDmax = container.querySelector('#inp-sfla-dmax');
-      const inpSeed = container.querySelector('#inp-sfla-seed');
+    // 1. Setup Mesin Utama SFLA
+    const mainCanvas = container.querySelector('#sfla-main-canvas');
+    const chartCanvas = container.querySelector('#sfla-chart-canvas');
+    const chkTrails = container.querySelector('#sfla-chk-trails');
+    const chkOpt = container.querySelector('#sfla-chk-opt');
+    const btnPlay = container.querySelector('#sfla-btn-play');
 
-      let currentObj = getObjective(selObj.value);
-      const renderer = new SFLARenderer();
-      const engine = new SFLAEngine({
+    let currentObj = getObjective('rastrigin');
+    const renderer = new SFLARenderer();
+
+    function readConfig() {
+      const pop = Number(container.querySelector('#sfla-inp-pop')?.value || 24);
+      const mem = Number(container.querySelector('#sfla-inp-mem')?.value || 4);
+      const loc = Number(container.querySelector('#sfla-inp-loc')?.value || 3);
+      const step = Number(container.querySelector('#sfla-inp-step')?.value || 3.2);
+      const seed = Number(container.querySelector('#sfla-inp-seed')?.value || 42);
+      return {
         objective: currentObj,
-        populationSize: Number(inpF.value),
-        memeplexCount: Number(inpM.value),
-        localIterations: Number(inpN.value),
-        maxStep: Number(inpDmax.value),
+        populationSize: pop,
+        memeplexCount: mem,
+        localIterations: loc,
+        maxStep: step,
         maxIterations: 40,
-        seed: Number(inpSeed.value)
-      });
-
-      function updateHudAndChart() {
-        const st = engine.getState();
-        hudCode.textContent = st.phase;
-        hudLabel.textContent = st.phaseLabel;
-        hudIter.textContent = `${st.iteration} / ${st.maxIterations}`;
-        const bf = st.bestFrog.fitness;
-        hudBest.textContent = bf < 0.0001 ? bf.toExponential(2) : bf.toFixed(4);
-        stageDesc.textContent = st.phaseDetail;
-        coordReadout.textContent = `Xg: (${st.bestFrog.x.toFixed(2)}, ${st.bestFrog.y.toFixed(2)})`;
-
-        renderConvergenceChart(
-          chartCanvas,
-          [
-            {
-              label: 'SFLA',
-              color: '#34d399',
-              fillTop: 'rgba(52, 211, 153, 0.28)',
-              data: st.history
-            }
-          ],
-          { maxIterations: st.maxIterations, title: 'Konvergensi Fitness Terbaik (SFLA)' }
-        );
-      }
-
-      const runner = new SimulationRunner({
-        stepsPerSecond: Number(speedInput.value),
-        reducedMotion,
-        onStep: () => {
-          const st = engine.step();
-          updateHudAndChart();
-          return st.phase === 'DONE';
-        },
-        onRender: (alpha) => {
-          renderer.render(simCanvas, engine.getState(), currentObj, {
-            alpha,
-            showOptimum: chkOpt.checked,
-            showTrails: chkTrail.checked
-          });
-        }
-      });
-
-      runner.onPlayStateChange = (isPlaying) => {
-        btnPlay.textContent = isPlaying ? '⏸ Pause' : '▶ Play';
-      };
-
-      function rebuildSimulation() {
-        currentObj = getObjective(selObj.value);
-        engine.configure({
-          objective: currentObj,
-          populationSize: Number(inpF.value),
-          memeplexCount: Number(inpM.value),
-          localIterations: Number(inpN.value),
-          maxStep: Number(inpDmax.value),
-          maxIterations: 40,
-          seed: Number(inpSeed.value)
-        });
-        runner.notifyReset();
-        updateHudAndChart();
-      }
-
-      btnPlay.addEventListener('click', () => {
-        if (engine.getState().phase === 'DONE') rebuildSimulation();
-        runner.togglePlay();
-      });
-      btnStep.addEventListener('click', () => runner.stepOnce());
-      btnReset.addEventListener('click', () => rebuildSimulation());
-      selObj.addEventListener('change', () => rebuildSimulation());
-      speedInput.addEventListener('input', () => runner.setSpeed(Number(speedInput.value)));
-
-      btnParams.addEventListener('click', () => {
-        const hidden = drawer.classList.toggle('hidden');
-        btnParams.setAttribute('aria-expanded', String(!hidden));
-      });
-      container.querySelector('#sfla-close-params').addEventListener('click', () => {
-        drawer.classList.add('hidden');
-        btnParams.setAttribute('aria-expanded', 'false');
-      });
-
-      [
-        [inpF, '#val-sfla-f'],
-        [inpM, '#val-sfla-m'],
-        [inpN, '#val-sfla-n'],
-        [inpDmax, '#val-sfla-dmax']
-      ].forEach(([inp, sel]) => {
-        inp.addEventListener('input', () => {
-          container.querySelector(sel).textContent = inp.value;
-        });
-      });
-
-      container.querySelector('#sfla-apply-params').addEventListener('click', () => {
-        drawer.classList.add('hidden');
-        rebuildSimulation();
-      });
-
-      const onResize = () => updateHudAndChart();
-      window.addEventListener('resize', onResize);
-
-      registerHooks({
-        togglePlay: () => btnPlay.click(),
-        step: () => btnStep.click(),
-        reset: () => btnReset.click()
-      });
-
-      updateHudAndChart();
-      runner.startLoop();
-
-      return () => {
-        window.removeEventListener('resize', onResize);
-        runner.destroy();
+        seed
       };
     }
-  }
-];
 
-  exports.sflaSlides = sflaSlides;
+    const engine = new SFLAEngine(readConfig());
+
+    function updateTelemetry(state) {
+      const hudPhase = container.querySelector('#sfla-hud-phase');
+      const hudBest = container.querySelector('#sfla-hud-best');
+      const detailEl = container.querySelector('#sfla-phase-detail');
+      const kpiIter = container.querySelector('#sfla-kpi-iter');
+      const kpiLocal = container.querySelector('#sfla-kpi-local');
+      const kpiBest = container.querySelector('#sfla-kpi-best');
+      const kpiMean = container.querySelector('#sfla-kpi-mean');
+      const kpiPop = container.querySelector('#sfla-kpi-pop');
+
+      if (hudPhase) hudPhase.textContent = state.phaseLabel;
+      if (hudBest && state.bestFrog) {
+        hudBest.textContent = `Xg: (${state.bestFrog.x.toFixed(2)}, ${state.bestFrog.y.toFixed(2)})`;
+      }
+      if (detailEl) detailEl.textContent = state.phaseDetail;
+      if (kpiIter) kpiIter.textContent = `${state.iteration} / ${state.maxIterations}`;
+      if (kpiLocal) kpiLocal.textContent = `Langkah lokal: ${state.localStep} / ${state.localIterations}`;
+
+      const bf = state.bestFrog ? state.bestFrog.fitness : 0;
+      if (kpiBest) kpiBest.textContent = bf < 0.001 && bf > 0 ? bf.toExponential(2) : bf.toFixed(4);
+
+      const lastHist = state.history[state.history.length - 1];
+      const mf = lastHist ? lastHist.meanFitness : bf;
+      if (kpiMean) kpiMean.textContent = mf < 0.01 && mf > 0 ? mf.toExponential(2) : mf.toFixed(3);
+      if (kpiPop) kpiPop.textContent = `${engine.populationSize} katak · ${engine.memeplexCount} memeplex`;
+
+      renderConvergenceChart(
+        chartCanvas,
+        [
+          {
+            label: 'SFLA',
+            color: '#12b0a2',
+            fillFlat: 'rgba(18, 176, 162, 0.14)',
+            data: state.history
+          }
+        ],
+        {
+          title: 'Konvergensi Fitness Terbaik f(Xg)',
+          maxIterations: state.maxIterations
+        }
+      );
+    }
+
+    const runner = new SimulationRunner({
+      stepsPerSecond: 2.5,
+      reducedMotion,
+      onStep: () => {
+        const st = engine.step();
+        updateTelemetry(st);
+        return st.phase === 'DONE';
+      },
+      onRender: (alpha) => {
+        const st = engine.getState();
+        renderer.render(mainCanvas, st, currentObj, {
+          alpha,
+          showTrails: chkTrails ? chkTrails.checked : true,
+          showOptimum: chkOpt ? chkOpt.checked : true
+        });
+      }
+    });
+
+    runner.onPlayStateChange = (playing) => {
+      if (btnPlay) btnPlay.textContent = playing ? 'Jeda (P)' : 'Mulai (P)';
+    };
+
+    function reconfigureAndReset() {
+      runner.pause();
+      engine.configure(readConfig());
+      updateTelemetry(engine.getState());
+      runner.notifyReset();
+    }
+
+    btnPlay?.addEventListener('click', () => runner.togglePlay());
+    container.querySelector('#sfla-btn-step')?.addEventListener('click', () => runner.stepOnce());
+    container.querySelector('#sfla-btn-cycle')?.addEventListener('click', () => {
+      runner.pause();
+      const st = engine.stepFullIteration();
+      updateTelemetry(st);
+      runner.notifyReset();
+    });
+    container.querySelector('#sfla-btn-reset')?.addEventListener('click', () => {
+      engine.reset();
+      updateTelemetry(engine.getState());
+      runner.notifyReset();
+    });
+
+    const objBtns = container.querySelectorAll('#sfla-obj-group .seg-btn');
+    objBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        objBtns.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentObj = getObjective(btn.dataset.obj);
+        reconfigureAndReset();
+      });
+    });
+
+    const sliderBindings = [
+      ['#sfla-inp-pop', '#sfla-val-pop', true],
+      ['#sfla-inp-mem', '#sfla-val-mem', true],
+      ['#sfla-inp-loc', '#sfla-val-loc', true],
+      ['#sfla-inp-step', '#sfla-val-step', true],
+      ['#sfla-inp-speed', '#sfla-val-speed', false]
+    ];
+
+    for (const [inpSel, valSel, shouldReset] of sliderBindings) {
+      const inp = container.querySelector(inpSel);
+      const valEl = container.querySelector(valSel);
+      inp?.addEventListener('input', () => {
+        if (valEl) valEl.textContent = inp.value;
+        if (shouldReset) reconfigureAndReset();
+        else runner.setSpeed(Number(inp.value));
+      });
+    }
+
+    container.querySelector('#sfla-inp-seed')?.addEventListener('change', () => reconfigureAndReset());
+
+    // 2. Sub-Workbench Interaktif
+    const subButtons = container.querySelectorAll('#sfla-subtabs .subtab-btn');
+    const subViews = {
+      partition: container.querySelector('#sfla-sub-partition'),
+      leap: container.querySelector('#sfla-sub-leap'),
+      metaphor: container.querySelector('#sfla-sub-metaphor'),
+      formulas: container.querySelector('#sfla-sub-formulas')
+    };
+
+    let activeSub = 'partition';
+    subButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        activeSub = btn.dataset.sub || 'partition';
+        subButtons.forEach((b) => b.classList.toggle('active', b === btn));
+        Object.entries(subViews).forEach(([key, el]) => {
+          el?.classList.toggle('hidden', key !== activeSub);
+        });
+        if (activeSub === 'leap') renderLeapSandbox();
+      });
+    });
+
+    // Sub-view 1: Partisi Round-Robin interaktif
+    const rrFInput = container.querySelector('#sfla-rr-f');
+    const rrMInput = container.querySelector('#sfla-rr-m');
+    const rrOutput = container.querySelector('#sfla-rr-output');
+
+    function renderRoundRobin() {
+      const F = Number(rrFInput?.value || 12);
+      const m = Number(rrMInput?.value || 3);
+      const fVal = container.querySelector('#sfla-rr-f-val');
+      const mVal = container.querySelector('#sfla-rr-m-val');
+      if (fVal) fVal.textContent = String(F);
+      if (mVal) mVal.textContent = String(m);
+      if (!rrOutput) return;
+
+      const groups = Array.from({ length: m }, () => []);
+      for (let rank = 1; rank <= F; rank++) {
+        const gIdx = (rank - 1) % m;
+        groups[gIdx].push(rank);
+      }
+
+      rrOutput.innerHTML = groups
+        .map((ranks, gIdx) => {
+          const col = MEMEPLEX_COLORS[gIdx % MEMEPLEX_COLORS.length];
+          const tokens = ranks
+            .map((r, i) => {
+              const roleTag = i === 0 ? (r === 1 ? ' (Xg, Xb)' : ' (Xb)') : i === ranks.length - 1 ? ' (Xw)' : '';
+              return `<span class="frog-token">#${r}${roleTag}</span>`;
+            })
+            .join('');
+          return `
+            <div class="mini-card" data-ui style="border-top: 2px solid ${col};">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <strong style="color:var(--ink); font-size:0.86rem;">Memeplex M${gIdx + 1}</strong>
+                <span class="tabular" style="font-size:0.75rem; color:var(--ink-faint);">${ranks.length} katak</span>
+              </div>
+              <div class="frog-token-list">${tokens}</div>
+            </div>
+          `;
+        })
+        .join('');
+    }
+
+    rrFInput?.addEventListener('input', renderRoundRobin);
+    rrMInput?.addEventListener('input', renderRoundRobin);
+
+    // Sub-view 2: Sandbox 3 Skenario Lompatan Xw
+    const leapCanvas = container.querySelector('#sfla-leap-canvas');
+    let leapScenario = 'xb';
+
+    function renderLeapSandbox() {
+      if (!leapCanvas) return;
+      const { ctx, width, height } = syncCanvasSize(leapCanvas);
+      ctx.fillStyle = '#041126';
+      ctx.fillRect(0, 0, width, height);
+
+      // Grid koordinat halus
+      ctx.strokeStyle = 'rgba(36, 63, 129, 0.36)';
+      ctx.lineWidth = 1;
+      for (let gx = 40; gx < width; gx += 48) {
+        ctx.beginPath();
+        ctx.moveTo(gx, 0);
+        ctx.lineTo(gx, height);
+        ctx.stroke();
+      }
+      for (let gy = 36; gy < height; gy += 48) {
+        ctx.beginPath();
+        ctx.moveTo(0, gy);
+        ctx.lineTo(width, gy);
+        ctx.stroke();
+      }
+
+      const ptXw = { x: width * 0.16, y: height * 0.76 };
+      const ptXb = { x: width * 0.56, y: height * 0.42 };
+      const ptXg = { x: width * 0.82, y: height * 0.24 };
+      const ptFailXb = { x: width * 0.42, y: height * 0.56 };
+      const ptSuccXb = { x: width * 0.46, y: height * 0.48 };
+      const ptSuccXg = { x: width * 0.64, y: height * 0.38 };
+      const ptRand = { x: width * 0.28, y: height * 0.26 };
+
+      const drawNode = (pt, r, fill, label, sub) => {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2);
+        ctx.fillStyle = fill;
+        ctx.strokeStyle = '#03132b';
+        ctx.lineWidth = 2;
+        ctx.fill();
+        ctx.stroke();
+        ctx.font = '700 11.5px "Plus Jakarta Sans", sans-serif';
+        ctx.fillStyle = '#ecf3ff';
+        ctx.fillText(label, pt.x + r + 7, pt.y - 2);
+        ctx.font = '600 10px "Plus Jakarta Sans", sans-serif';
+        ctx.fillStyle = '#8a99b2';
+        ctx.fillText(sub, pt.x + r + 7, pt.y + 12);
+        ctx.restore();
+      };
+
+      const drawArc = (from, to, color, dashed, label) => {
+        ctx.save();
+        const mx = (from.x + to.x) / 2;
+        const my = (from.y + to.y) / 2 - 28;
+        ctx.beginPath();
+        ctx.moveTo(from.x, from.y);
+        ctx.quadraticCurveTo(mx, my, to.x, to.y);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2.3;
+        if (dashed) ctx.setLineDash([5, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.font = '700 11px "Plus Jakarta Sans", sans-serif';
+        ctx.fillStyle = color;
+        ctx.fillText(label, mx - 24, my - 6);
+        ctx.restore();
+      };
+
+      drawNode(ptXw, 9, '#8a99b2', 'Xw Awal', 'f = 18.4');
+      drawNode(ptXb, 10, '#12b0a2', 'Xb (Terbaik Memeplex)', 'f = 4.2');
+      drawNode(ptXg, 11, '#fdbb16', 'Xg (Terbaik Global)', 'f = 0.3');
+
+      const eqEl = container.querySelector('#sfla-leap-eq');
+      const expEl = container.querySelector('#sfla-leap-explain');
+
+      if (leapScenario === 'xb') {
+        drawArc(ptXw, ptSuccXb, '#12b0a2', false, 'Lompat ke Xb [Diterima]');
+        drawNode(ptSuccXb, 9.5, '#12b0a2', 'Xw Baru', 'f = 6.1 < 18.4');
+        if (eqEl) eqEl.textContent = 'D = rand() * (Xb - Xw) ; f(Xw_baru) < f(Xw)';
+        if (expEl) expEl.textContent = 'Skenario 1: Lompatan pertama menuju pemimpin memeplex Xb menghasilkan fitness lebih rendah sehingga langsung diterima.';
+      } else if (leapScenario === 'xg') {
+        drawArc(ptXw, ptFailXb, 'rgba(224, 90, 95, 0.72)', true, 'Uji Xb Gagal (f = 21.0)');
+        drawArc(ptXw, ptSuccXg, '#fdbb16', false, 'Koreksi ke Xg [Diterima]');
+        drawNode(ptSuccXg, 9.5, '#fdbb16', 'Xw Baru', 'f = 3.8 < 18.4');
+        if (eqEl) eqEl.textContent = 'Gagal Xb -> D = rand() * (Xg - Xw) ; f(Xw_baru) < f(Xw)';
+        if (expEl) expEl.textContent = 'Skenario 2: Titik antara Xw dan Xb kebetulan berada di punggung bukit lokal, maka Xw melompat menuju pemimpin global Xg.';
+      } else {
+        drawArc(ptXw, ptFailXb, 'rgba(224, 90, 95, 0.55)', true, 'Gagal Xb & Xg');
+        drawArc(ptXw, ptRand, '#26aee4', true, 'Relokasi Acak Domain');
+        drawNode(ptRand, 9.5, '#26aee4', 'Katak Acak Baru', 'Eksplorasi segar');
+        if (eqEl) eqEl.textContent = 'Xw_baru = X_min + rand() * (X_max - X_min)';
+        if (expEl) expEl.textContent = 'Skenario 3: Jika kedua lompatan terarah tetap gagal memperbaiki fitness, katak ditempatkan ulang secara acak untuk menjaga keragaman.';
+      }
+    }
+
+    container.querySelectorAll('[data-leap]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        leapScenario = btn.dataset.leap || 'xb';
+        renderLeapSandbox();
+      });
+    });
+
+    registerHooks?.({
+      togglePlay: () => runner.togglePlay(),
+      step: () => runner.stepOnce(),
+      reset: () => {
+        engine.reset();
+        updateTelemetry(engine.getState());
+        runner.notifyReset();
+      }
+    });
+
+    const onResize = () => {
+      updateTelemetry(engine.getState());
+      runner.notifyReset();
+      if (activeSub === 'leap') renderLeapSandbox();
+    };
+    window.addEventListener('resize', onResize);
+
+    renderRoundRobin();
+    updateTelemetry(engine.getState());
+    runner.startLoop();
+
+    return () => {
+      window.removeEventListener('resize', onResize);
+      runner.destroy();
+    };
+  }
+};
+
+
+  exports.tabSfla = tabSfla;
   },
   "core/engine.js": function(exports, __require) {
 /**
@@ -2994,22 +2446,20 @@ class SFLAEngine {
   },
   "render/sflaRenderer.js": function(exports, __require) {
 /**
- * Renderer Visual SFLA — Metafora Katak di Kolam Teratai (PRD Bagian 7.2 & 14)
- * Menampilkan daun teratai, warna & label memeplex (M1..Mm), panah lompatan, riak air,
- * dan mahkota emas untuk katak terbaik global (Xg).
+ * Renderer Visual SFLA (Metafora Katak di Kolam Teratai)
+ * Menggunakan Palet Resmi ITS: FKK Medical Tosca (#12B0A2), Kuning Tua ITS (#FDBB16),
+ * FTK Summer Sky (#26AEE4), FV Crusta (#F47D52), dan Biru Muda ITS (#75BDE0).
  */
 const {  ContourMapCache, syncCanvasSize  } = __require("render/contourRenderer.js");
-
-// Palet warna memeplex kontras tinggi di atas latar kolam zamrud gelap
 const MEMEPLEX_COLORS = [
-  '#43bf9c', // M1: Hijau teratai
-  '#d8a33a', // M2: Oker keemasan
-  '#53bce3', // M3: Biru langit hidrologi
-  '#e07a9a', // M4: Merah muda teratai
-  '#48b8d0', // M5: Biru teluk
-  '#e08544', // M6: Jingga terakota
-  '#9ccf4e', // M7: Hijau pucuk
-  '#27a89a'  // M8: Toska dalam
+  '#12b0a2', // M1: FKK Medical Tosca
+  '#fdbb16', // M2: ITS Kuning Tua
+  '#26aee4', // M3: FTK Summer Sky
+  '#f47d52', // M4: FV Crusta
+  '#75bde0', // M5: ITS Biru Muda Lambang
+  '#127bbe', // M6: ITS Biru Tua Lambang
+  '#52d1c6', // M7: Tosca Muda Kontras
+  '#f6ec1d'  // M8: ITS Kuning Lambang
 ];
 class SFLARenderer {
   constructor() {
@@ -3028,17 +2478,17 @@ class SFLARenderer {
     });
     if (!vp) return;
 
-    // 1. Gambar daun teratai dekoratif halus di beberapa titik kolam
+    // 1. Daun teratai geometris di beberapa titik referensi kolam
     this.drawLilyPads(ctx, vp, objective);
 
-    // 2. Gambar jejak pergerakan katak jika diaktifkan
+    // 2. Jejak lintasan lompatan katak
     if (showTrails) {
       for (const frog of state.frogs) {
         if (!frog.trail || frog.trail.length < 2) continue;
         const mColor =
           frog.memeplex >= 0
             ? MEMEPLEX_COLORS[frog.memeplex % MEMEPLEX_COLORS.length]
-            : 'rgba(148, 163, 184, 0.5)';
+            : 'rgba(184, 197, 217, 0.45)';
         ctx.save();
         ctx.beginPath();
         frog.trail.forEach((pt, idx) => {
@@ -3047,34 +2497,34 @@ class SFLARenderer {
           else ctx.lineTo(s.x, s.y);
         });
         ctx.strokeStyle = mColor;
-        ctx.globalAlpha = 0.22;
+        ctx.globalAlpha = 0.24;
         ctx.lineWidth = 1.6;
         ctx.stroke();
         ctx.restore();
       }
     }
 
-    // 3. Gambar panah lompatan & riak percikan air pada tahap LOCAL_JUMP
+    // 3. Vektor lompatan & riak air pada tahap LOCAL_JUMP
     if (state.phase === 'LOCAL_JUMP' && state.jumps.length > 0) {
       for (const jmp of state.jumps) {
         this.drawJumpEffect(ctx, vp, jmp, alpha);
       }
     }
 
-    // 4. Gambar garis pusaran tipis saat SHUFFLE
+    // 4. Lingkaran konsolidasi global saat SHUFFLE
     if (state.phase === 'SHUFFLE' && state.bestFrog) {
       const center = vp.worldToScreen(state.bestFrog.x, state.bestFrog.y);
       ctx.save();
-      ctx.strokeStyle = 'rgba(52, 211, 153, 0.28)';
+      ctx.strokeStyle = 'rgba(18, 176, 162, 0.38)';
       ctx.setLineDash([4, 6]);
-      ctx.lineWidth = 1.4;
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.arc(center.x, center.y, 48 + (1 - alpha) * 40, 0, Math.PI * 2);
+      ctx.arc(center.x, center.y, 46 + (1 - alpha) * 38, 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
     }
 
-    // 5. Urutkan penggambaran katak agar katak terbaik digambar paling atas (tidak tertutup)
+    // 5. Urutkan penggambaran katak agar solusi terbaik berada paling atas
     const frogsToDraw = [...state.frogs].sort((a, b) => b.fitness - a.fitness);
     for (const frog of frogsToDraw) {
       const ix = frog.prevX + (frog.x - frog.prevX) * alpha;
@@ -3097,12 +2547,11 @@ class SFLARenderer {
       if (p.x < objective.min || p.x > objective.max) continue;
       const s = vp.worldToScreen(p.x, p.y);
       ctx.beginPath();
-      // Daun teratai dengan celah huruf V kecil
       ctx.moveTo(s.x, s.y);
       ctx.arc(s.x, s.y, p.r, p.rot + 0.22, p.rot + Math.PI * 2 - 0.22);
       ctx.closePath();
-      ctx.fillStyle = 'rgba(16, 185, 129, 0.12)';
-      ctx.strokeStyle = 'rgba(52, 211, 153, 0.22)';
+      ctx.fillStyle = 'rgba(18, 176, 162, 0.12)';
+      ctx.strokeStyle = 'rgba(18, 176, 162, 0.28)';
       ctx.lineWidth = 1.2;
       ctx.fill();
       ctx.stroke();
@@ -3118,69 +2567,64 @@ class SFLARenderer {
 
     ctx.save();
 
-    // Bila percobaan ke Xb gagal lalu pindah ke Xg, tampilkan garis tipis gagal ke Xb
     if (jmp.triedXbFailed && typeof jmp.failedXbX === 'number') {
       const fxb = vp.worldToScreen(jmp.failedXbX, jmp.failedXbY);
       ctx.beginPath();
       ctx.moveTo(from.x, from.y);
       ctx.lineTo(fxb.x, fxb.y);
-      ctx.strokeStyle = 'rgba(251, 113, 133, 0.35)';
+      ctx.strokeStyle = 'rgba(224, 90, 95, 0.38)';
       ctx.setLineDash([4, 4]);
       ctx.lineWidth = 1.4;
       ctx.stroke();
       ctx.setLineDash([]);
     }
 
-    let strokeColor = '#43bf9c';
-    let badgeText = '→ Xb [OK]';
+    let strokeColor = '#12b0a2';
+    let badgeText = 'Ke Xb';
     if (jmp.type === 'XG_SUCCESS') {
-      strokeColor = '#d8a33a';
-      badgeText = '→ Xg [OK]';
+      strokeColor = '#fdbb16';
+      badgeText = 'Ke Xg';
     } else if (jmp.type === 'RANDOM_RESET') {
-      strokeColor = '#d95b5b';
-      badgeText = 'Acak ↺';
+      strokeColor = '#e05a5f';
+      badgeText = 'Reset Acak';
     }
 
-    // Busur lompatan melengkung
     const midX = (from.x + curX) / 2;
-    const midY = (from.y + curY) / 2 - 22 * Math.sin(alpha * Math.PI * 0.5 + 0.3);
+    const midY = (from.y + curY) / 2 - 20 * Math.sin(alpha * Math.PI * 0.5 + 0.3);
 
     ctx.beginPath();
     ctx.moveTo(from.x, from.y);
     ctx.quadraticCurveTo(midX, midY, curX, curY);
     ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = 2.4;
+    ctx.lineWidth = 2.2;
     if (jmp.type === 'RANDOM_RESET') ctx.setLineDash([5, 4]);
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Kepala panah di ujung lompatan
     const angle = Math.atan2(curY - midY, curX - midX);
     ctx.beginPath();
     ctx.moveTo(curX, curY);
-    ctx.lineTo(curX - 9 * Math.cos(angle - 0.45), curY - 9 * Math.sin(angle - 0.45));
-    ctx.lineTo(curX - 9 * Math.cos(angle + 0.45), curY - 9 * Math.sin(angle + 0.45));
+    ctx.lineTo(curX - 8.5 * Math.cos(angle - 0.45), curY - 8.5 * Math.sin(angle - 0.45));
+    ctx.lineTo(curX - 8.5 * Math.cos(angle + 0.45), curY - 8.5 * Math.sin(angle + 0.45));
     ctx.closePath();
     ctx.fillStyle = strokeColor;
     ctx.fill();
 
-    // Riak percikan air saat mendarat
     if (alpha > 0.35) {
       const rippleProgress = (alpha - 0.35) / 0.65;
-      const r1 = 8 + rippleProgress * 18;
+      const r1 = 8 + rippleProgress * 17;
       ctx.beginPath();
       ctx.arc(to.x, to.y, r1, 0, Math.PI * 2);
       ctx.strokeStyle = strokeColor;
-      ctx.globalAlpha = Math.max(0, 0.75 * (1 - rippleProgress));
-      ctx.lineWidth = 2;
+      ctx.globalAlpha = Math.max(0, 0.72 * (1 - rippleProgress));
+      ctx.lineWidth = 1.8;
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
 
-    // Label kecil status lompatan
-    ctx.font = '700 11px "Ubuntu Mono", monospace';
+    ctx.font = '700 11px "Plus Jakarta Sans", sans-serif';
     ctx.fillStyle = strokeColor;
-    ctx.fillText(badgeText, to.x + 11, to.y - 11);
+    ctx.fillText(badgeText, to.x + 10, to.y - 10);
 
     ctx.restore();
   }
@@ -3190,23 +2634,21 @@ class SFLARenderer {
     const isMemeplexBest = frog.role === 'memeplex_best';
     const normFit = Math.min(1, Math.max(0, frog.fitness / (objective.maxVisualValue || 50)));
 
-    // Katak dengan fitness lebih baik sedikit lebih besar & bercahaya
     const baseR = compact ? 6.5 : 8.2;
-    const radius = isGlobalBest ? baseR + 3.5 : baseR + (1 - normFit) * 2.5;
+    const radius = isGlobalBest ? baseR + 3.4 : baseR + (1 - normFit) * 2.4;
 
     const fill =
       frog.memeplex >= 0
         ? MEMEPLEX_COLORS[frog.memeplex % MEMEPLEX_COLORS.length]
-        : '#94a3b8';
+        : '#8a99b2';
 
     ctx.save();
     ctx.translate(x, y);
 
-    // Pendar cahaya untuk katak terbaik global atau terbaik kelompok
     if (isGlobalBest || isMemeplexBest) {
-      const glowR = isGlobalBest ? radius * 2.6 : radius * 1.9;
+      const glowR = isGlobalBest ? radius * 2.5 : radius * 1.8;
       const g = ctx.createRadialGradient(0, 0, 2, 0, 0, glowR);
-      g.addColorStop(0, isGlobalBest ? 'rgba(251, 191, 36, 0.7)' : 'rgba(52, 211, 153, 0.45)');
+      g.addColorStop(0, isGlobalBest ? 'rgba(253, 187, 22, 0.68)' : 'rgba(18, 176, 162, 0.42)');
       g.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = g;
       ctx.beginPath();
@@ -3214,55 +2656,51 @@ class SFLARenderer {
       ctx.fill();
     }
 
-    // Siluet tubuh katak bergaya ikon bersih (badan bulat + 2 mata kecil di atas)
     ctx.beginPath();
     ctx.arc(0, 0, radius, 0, Math.PI * 2);
-    ctx.fillStyle = isGlobalBest ? '#fbbf24' : fill;
-    ctx.strokeStyle = isGlobalBest ? '#fef08a' : '#041311';
-    ctx.lineWidth = isGlobalBest ? 2.6 : 2;
+    ctx.fillStyle = isGlobalBest ? '#fdbb16' : fill;
+    ctx.strokeStyle = isGlobalBest ? '#fff3c4' : '#03132b';
+    ctx.lineWidth = isGlobalBest ? 2.4 : 1.9;
     ctx.fill();
     ctx.stroke();
 
-    // Dua mata katak di bagian atas agar bentuk katak langsung dikenali tanpa bergantung warna saja
     const eyeOffset = radius * 0.56;
-    const eyeR = Math.max(2, radius * 0.28);
+    const eyeR = Math.max(2, radius * 0.27);
     for (const dir of [-1, 1]) {
       ctx.beginPath();
       ctx.arc(dir * eyeOffset, -radius * 0.68, eyeR, 0, Math.PI * 2);
-      ctx.fillStyle = '#f8fafc';
+      ctx.fillStyle = '#ecf3ff';
       ctx.fill();
       ctx.beginPath();
       ctx.arc(dir * eyeOffset, -radius * 0.68, eyeR * 0.5, 0, Math.PI * 2);
-      ctx.fillStyle = '#0f172a';
+      ctx.fillStyle = '#03132b';
       ctx.fill();
     }
 
-    // Mahkota emas untuk katak terbaik global (Xg)
     if (isGlobalBest) {
       ctx.beginPath();
       ctx.moveTo(-7, -radius - 4);
-      ctx.lineTo(-5, -radius - 12);
+      ctx.lineTo(-5, -radius - 11);
       ctx.lineTo(0, -radius - 7);
-      ctx.lineTo(5, -radius - 12);
+      ctx.lineTo(5, -radius - 11);
       ctx.lineTo(7, -radius - 4);
       ctx.closePath();
-      ctx.fillStyle = '#fde047';
-      ctx.strokeStyle = '#78350f';
+      ctx.fillStyle = '#fdbb16';
+      ctx.strokeStyle = '#03132b';
       ctx.lineWidth = 1.4;
       ctx.fill();
       ctx.stroke();
     }
 
-    // Label nomor memeplex (M1..Mm) atau peringkat saat SORT agar aksesibel bagi buta warna
     if (!compact) {
-      ctx.font = '700 10px "Ubuntu Mono", monospace';
+      ctx.font = '700 9.5px "Plus Jakarta Sans", sans-serif';
       ctx.textAlign = 'center';
       if (frog.memeplex >= 0) {
-        ctx.fillStyle = '#021310';
-        ctx.fillText(`M${frog.memeplex + 1}`, 0, 3.5);
+        ctx.fillStyle = '#03132b';
+        ctx.fillText(`M${frog.memeplex + 1}`, 0, 3.4);
       } else if (phase === 'SORT' && frog.rank >= 0 && frog.rank < 9) {
-        ctx.fillStyle = '#0f172a';
-        ctx.fillText(`${frog.rank + 1}`, 0, 3.5);
+        ctx.fillStyle = '#03132b';
+        ctx.fillText(`${frog.rank + 1}`, 0, 3.4);
       }
     }
 
@@ -3270,14 +2708,14 @@ class SFLARenderer {
   }
 }
 
-
   exports.SFLARenderer = SFLARenderer;
   exports.MEMEPLEX_COLORS = MEMEPLEX_COLORS;
   },
   "render/chart.js": function(exports, __require) {
 /**
- * Grafik Konvergensi Fitness Terbaik per Iterasi (F-09)
- * Mendukung satu seri (SFLA atau WCA) maupun multi-seri (Perbandingan SFLA vs WCA).
+ * Grafik Konvergensi Fitness Terbaik per Iterasi
+ * Mengikuti aturan visual flat data-terminal ITS: latar datar #000E25, 4 garis grid tipis #243F81,
+ * segmen garis lurus tegas, dan warna seri resmi ITS (#12B0A2 SFLA, #26AEE4 WCA, #FDBB16 Laut/Optimum).
  */
 const {  syncCanvasSize  } = __require("render/contourRenderer.js");
 function renderConvergenceChart(canvas, seriesList, options = {}) {
@@ -3287,21 +2725,21 @@ function renderConvergenceChart(canvas, seriesList, options = {}) {
 
   const padLeft = 58;
   const padRight = 18;
-  const padTop = 28;
-  const padBottom = 32;
+  const padTop = 30;
+  const padBottom = 30;
   const plotW = Math.max(20, width - padLeft - padRight);
   const plotH = Math.max(20, height - padTop - padBottom);
 
-  // Latar belakang area plot
-  ctx.fillStyle = 'rgba(4, 12, 22, 0.72)';
+  // Latar belakang datar kontainer grafik (surface-container-lowest ITS)
+  ctx.fillStyle = '#041126';
   ctx.fillRect(0, 0, width, height);
 
-  // Judul mini grafik
-  ctx.font = '700 13px "Plus Jakarta Sans", sans-serif';
-  ctx.fillStyle = '#cbd5e1';
-  ctx.fillText(options.title || 'Grafik Konvergensi (Fitness Terbaik)', 14, 18);
+  // Judul grafik di kiri atas
+  ctx.font = '700 12.5px "Plus Jakarta Sans", sans-serif';
+  ctx.fillStyle = '#d6e3ff';
+  ctx.textAlign = 'left';
+  ctx.fillText(options.title || 'Kurva Konvergensi Fitness', 14, 19);
 
-  // Kumpulkan rentang data X dan Y
   let maxIter = Math.max(10, options.maxIterations || 20);
   let maxVal = 0;
   let minVal = Infinity;
@@ -3321,11 +2759,11 @@ function renderConvergenceChart(canvas, seriesList, options = {}) {
   const yFloor = options.zeroBaseline !== false ? 0 : Math.max(0, minVal * 0.9);
   const yCeil = maxVal <= yFloor + 1e-6 ? yFloor + 1 : maxVal * 1.08;
 
-  // Grid horizontal (4 garis)
-  ctx.strokeStyle = 'rgba(148, 163, 184, 0.15)';
+  // Empat garis grid horizontal (Biru Cover ITS #243F81 dengan opasitas tenang)
+  ctx.strokeStyle = 'rgba(36, 63, 129, 0.48)';
   ctx.lineWidth = 1;
-  ctx.font = '400 11px "Ubuntu Mono", monospace';
-  ctx.fillStyle = '#94a3b8';
+  ctx.font = '600 10.5px "Plus Jakarta Sans", sans-serif';
+  ctx.fillStyle = '#8a99b2';
   ctx.textAlign = 'right';
 
   for (let i = 0; i <= 3; i++) {
@@ -3338,8 +2776,9 @@ function renderConvergenceChart(canvas, seriesList, options = {}) {
     ctx.lineTo(padLeft + plotW, py);
     ctx.stroke();
 
-    const formatted = val >= 10 ? val.toFixed(1) : val >= 0.1 ? val.toFixed(2) : val.toExponential(1);
-    ctx.fillText(formatted, padLeft - 6, py + 4);
+    const formatted =
+      val >= 10 ? val.toFixed(1) : val >= 0.1 ? val.toFixed(2) : val === 0 ? '0' : val.toExponential(1);
+    ctx.fillText(formatted, padLeft - 7, py + 3.5);
   }
 
   // Label sumbu X
@@ -3348,15 +2787,15 @@ function renderConvergenceChart(canvas, seriesList, options = {}) {
   for (let i = 0; i <= xTicks; i++) {
     const iterVal = Math.round((i / xTicks) * maxIter);
     const px = padLeft + (iterVal / maxIter) * plotW;
-    ctx.fillText(`${iterVal}`, px, padTop + plotH + 18);
+    ctx.fillText(`${iterVal}`, px, padTop + plotH + 17);
   }
-  ctx.fillStyle = '#64748b';
-  ctx.fillText('Iterasi', padLeft + plotW / 2, height - 3);
+  ctx.fillStyle = '#8a99b2';
+  ctx.fillText(options.xLabel || 'Iterasi', padLeft + plotW / 2, height - 3);
 
-  // Gambar kurva tiap seri
+  // Gambar seri data
   seriesList.forEach((s, sIdx) => {
     if (!s.data || s.data.length === 0) return;
-    const color = s.color || '#34d399';
+    const color = s.color || '#12b0a2';
 
     const points = s.data.map((pt) => {
       const px = padLeft + (pt.iteration / maxIter) * plotW;
@@ -3365,1164 +2804,714 @@ function renderConvergenceChart(canvas, seriesList, options = {}) {
       return { px, py, val: pt.bestFitness };
     });
 
-    // Area gradien tipis di bawah kurva bila hanya 1 seri
+    // Isian datar 14% opasitas untuk grafik seri tunggal (sesuai app-screens.md)
     if (seriesList.length === 1 && points.length > 1) {
-      const grad = ctx.createLinearGradient(0, padTop, 0, padTop + plotH);
-      grad.addColorStop(0, s.fillTop || 'rgba(16, 185, 129, 0.28)');
-      grad.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
       ctx.beginPath();
       ctx.moveTo(points[0].px, padTop + plotH);
       points.forEach((p) => ctx.lineTo(p.px, p.py));
       ctx.lineTo(points[points.length - 1].px, padTop + plotH);
       ctx.closePath();
-      ctx.fillStyle = grad;
+      ctx.fillStyle = s.fillFlat || 'rgba(18, 176, 162, 0.14)';
       ctx.fill();
     }
 
-    // Garis kurva utama
+    // Garis lurus antar titik iterasi
     ctx.beginPath();
     points.forEach((p, idx) => {
       if (idx === 0) ctx.moveTo(p.px, p.py);
       else ctx.lineTo(p.px, p.py);
     });
     ctx.strokeStyle = color;
-    ctx.lineWidth = 2.6;
+    ctx.lineWidth = 2.2;
     ctx.lineJoin = 'round';
     ctx.stroke();
 
-    // Titik ujung terakhir
+    // Titik nilai terkini di ujung kurva
     const last = points[points.length - 1];
     ctx.beginPath();
-    ctx.arc(last.px, last.py, 4.5, 0, Math.PI * 2);
+    ctx.arc(last.px, last.py, 4, 0, Math.PI * 2);
     ctx.fillStyle = color;
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#041126';
+    ctx.lineWidth = 1.6;
     ctx.fill();
     ctx.stroke();
 
-    // Legenda kanan atas untuk multi-seri
+    // Legenda kanan atas untuk perbandingan multi-seri
     if (seriesList.length > 1) {
-      const lx = width - padRight - (seriesList.length - 1 - sIdx) * 110 - 6;
+      const slotW = 118;
+      const rightEdge = width - padRight - (seriesList.length - 1 - sIdx) * slotW;
+      const disp = last.val < 0.001 && last.val > 0 ? last.val.toExponential(1) : last.val.toFixed(3);
+      const labelStr = `${s.label}: ${disp}`;
+
+      ctx.font = '700 11.5px "Plus Jakarta Sans", sans-serif';
       ctx.textAlign = 'right';
-      ctx.font = '700 12px "Ubuntu Mono", monospace';
       ctx.fillStyle = color;
-      const disp = last.val < 0.001 ? last.val.toExponential(1) : last.val.toFixed(3);
-      ctx.fillText(`● ${s.label}: ${disp}`, lx, 18);
+      ctx.fillText(labelStr, rightEdge, 19);
+
+      const textW = ctx.measureText(labelStr).width;
+      ctx.beginPath();
+      ctx.arc(rightEdge - textW - 7, 15, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
     }
   });
 
   ctx.textAlign = 'left';
 }
 
-
   exports.renderConvergenceChart = renderConvergenceChart;
   },
-  "slides/wcaSlides.js": function(exports, __require) {
+  "tabs/tabWca.js": function(exports, __require) {
 /**
- * Modul Slide WCA (Slide 10–15) — Metafora Siklus Air (PRD Bagian 8)
+ * Tab 3: Laboratorium Simulasi Water Cycle Algorithm (WCA)
+ * Menampilkan simulasi live 2D Siklus Hidrologi (Aliran, Sungai, Laut, lingkaran penguapan dmax,
+ * pertukaran peran, dan hujan baru) beserta meja kerja interaktif 4 mekanisme internal WCA.
  */
 const {  getObjective  } = __require("core/objectives.js");
 const {  SimulationRunner  } = __require("core/engine.js");
 const {  WCAEngine  } = __require("algorithms/wca.js");
 const {  WCARenderer  } = __require("render/wcaRenderer.js");
-const {  syncCanvasSize  } = __require("render/contourRenderer.js");
 const {  renderConvergenceChart  } = __require("render/chart.js");
-const wcaSlides = [
-  // =========================================================================
-  // SLIDE 10: PENGANTAR & METAFORA SIKLUS AIR (WCA)
-  // =========================================================================
-  {
-    id: 'wca-intro',
-    shortTitle: 'WCA: Metafora Siklus Air',
-    title: 'Water Cycle Algorithm (WCA)',
-    theme: 'wca',
-    notes: `
-      <ul>
-        <li><strong>Asal-usul:</strong> Diperkenalkan oleh Eskandar dkk. (2012), terinspirasi dari gravitasi air hujan yang selalu mencari titik permukaan bumi paling rendah (Laut).</li>
-        <li><strong>Klik 4 elemen di kanan</strong> untuk menyorot hierarki hidrologi pada peta:
-          <ul>
-            <li><strong>Laut (Sea):</strong> 1 solusi terbaik global saat ini.</li>
-            <li><strong>Sungai (River):</strong> <code>Nsr − 1</code> solusi terbaik berikutnya.</li>
-            <li><strong>Aliran (Stream):</strong> Tetesan kecil di lereng bukit yang mengalir menuju sungai/laut.</li>
-            <li><strong>Penguapan &amp; Hujan:</strong> Daur ulang populasi saat sungai sudah berkumpul di muara laut.</li>
-          </ul>
-        </li>
-      </ul>
-    `,
-    mount(container, { reducedMotion }) {
-      container.innerHTML = `
-        <div class="slide-top">
+const {  syncCanvasSize  } = __require("render/contourRenderer.js");
+const tabWca = {
+  id: 'wca',
+  label: 'Simulasi WCA',
+  title: 'Water Cycle Algorithm (WCA)',
+  notes: `
+    <p><strong>Panduan Demonstrasi Tab Simulasi WCA:</strong></p>
+    <ul>
+      <li>Tekan <strong>Langkah (S)</strong> untuk memperlihatkan urutan deterministik siklus air: <code>INIT &rarr; HIERARCHY &rarr; FLOW &rarr; ROLE_SWAP &rarr; EVAPORATION &rarr; RAIN</code>.</li>
+      <li>Amati lingkaran putus-putus <code>dmax</code> di sekeliling <strong>LAUT</strong> yang menyusut secara adaptif setiap iterasi. Saat sungai atau aliran masuk ke dalam radius <code>dmax</code>, air menguap dan turun kembali sebagai hujan baru.</li>
+      <li>Gunakan meja kerja di bawah untuk menguji alokasi aliran proporsional <code>NSn</code> dan efek konstanta <code>C = 2</code>.</li>
+    </ul>
+  `,
+
+  mount(container, { reducedMotion, registerHooks }) {
+    container.innerHTML = `
+      <header class="tab-lead">
+        <div class="tab-lead-main">
+          <div class="tab-breadcrumb">
+            <span class="tab-breadcrumb-dot"></span>
+            <span>Algoritma Siklus Hidrologi · Eskandar et al. (2012)</span>
+          </div>
+          <h1 class="tab-title">Water Cycle Algorithm (WCA)</h1>
+          <p class="tab-desc">
+            Memodelkan gravitasi aliran permukaan dari <strong>Aliran</strong> menuju <strong>Sungai</strong> dan bermuara di <strong>Laut</strong> (solusi terbaik global), dipadukan dengan kondisi penguapan adaptif <code>dmax</code> dan presipitasi hujan untuk mencegah konvergensi prematur.
+          </p>
+        </div>
+        <div class="tab-lead-meta">
+          <span class="status-chip sky">Urutan: Hierarchy &rarr; Flow &rarr; Role Swap &rarr; Evaporation &rarr; Rain</span>
+        </div>
+      </header>
+
+      <!-- Laboratorium Utama WCA (7 Kolom Kanvas : 5 Kolom Kontrol & Telemetri) -->
+      <div class="grid-12">
+        <div class="span-7 panel-flush" data-ui>
+          <div class="stage-caption-bar" data-ui>
+            <div class="seg-group" data-ui id="wca-obj-group">
+              <button type="button" class="seg-btn active" data-obj="rastrigin">Rastrigin</button>
+              <button type="button" class="seg-btn" data-obj="ackley">Ackley</button>
+              <button type="button" class="seg-btn" data-obj="sphere">Sphere</button>
+            </div>
+            <div style="display:flex; align-items:center; gap:0.85rem; font-size:0.8rem;">
+              <label style="display:inline-flex; align-items:center; gap:0.35rem; cursor:pointer;">
+                <input type="checkbox" id="wca-chk-trails" checked /> Jaringan Aliran
+              </label>
+              <label style="display:inline-flex; align-items:center; gap:0.35rem; cursor:pointer;">
+                <input type="checkbox" id="wca-chk-opt" checked /> Target (0, 0)
+              </label>
+            </div>
+          </div>
+
+          <div class="canvas-stage" data-ui>
+            <div class="canvas-hud" data-ui>
+              <div class="hud-status" data-ui>
+                <span class="hud-dot"></span>
+                <span id="wca-hud-phase">Inisialisasi Tetesan</span>
+              </div>
+              <div class="hud-coords" data-ui id="wca-hud-sea">Laut: (0.00, 0.00)</div>
+            </div>
+            <canvas id="wca-main-canvas"></canvas>
+          </div>
+
+          <div class="stage-caption-bar" data-ui>
+            <span id="wca-phase-detail">Menyebar populasi tetesan air awal di bentang topografi.</span>
+            <div class="legend-inline">
+              <span class="legend-item"><span class="swatch-round" style="background:#127bbe; border:2px solid #fdbb16;"></span>Laut (Terbaik)</span>
+              <span class="legend-item"><span class="swatch" style="background:#26aee4; transform:rotate(45deg);"></span>Sungai (S1..Sn)</span>
+              <span class="legend-item"><span class="swatch-round" style="background:#cee5ff;"></span>Aliran</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="span-5 panel" data-ui>
+          <div class="ctrl-toolbar" data-ui>
+            <button type="button" class="btn btn-wca" id="wca-btn-play">Mulai (P)</button>
+            <button type="button" class="btn btn-gold" id="wca-btn-step">Langkah (S)</button>
+            <button type="button" class="btn" id="wca-btn-cycle">+1 Siklus</button>
+            <button type="button" class="btn" id="wca-btn-reset">Reset (R)</button>
+          </div>
+
+          <div class="kpi-strip" data-ui>
+            <div class="kpi-cell" data-ui>
+              <span class="kpi-label">Iterasi Siklus</span>
+              <span class="kpi-val" id="wca-kpi-iter">0 / 40</span>
+              <span class="kpi-sub" id="wca-kpi-events">0 tukar · 0 hujan</span>
+            </div>
+            <div class="kpi-cell" data-ui>
+              <span class="kpi-label">Fitness Laut f(Xsea)</span>
+              <span class="kpi-val gold" id="wca-kpi-best">0.000</span>
+              <span class="kpi-sub">Target minimum: 0</span>
+            </div>
+            <div class="kpi-cell" data-ui>
+              <span class="kpi-label">Radius dmax</span>
+              <span class="kpi-val sky" id="wca-kpi-dmax">0.450</span>
+              <span class="kpi-sub" id="wca-kpi-pop">24 tetes · Nsr = 4</span>
+            </div>
+          </div>
+
+          <div class="chart-box" data-ui>
+            <canvas id="wca-chart-canvas"></canvas>
+          </div>
+
+          <div class="panel-navy" data-ui>
+            <div class="panel-header" style="margin-bottom:0.55rem;">
+              <strong style="font-size:0.86rem; color:var(--ink);">Parameter Eksperimen WCA</strong>
+              <span style="font-size:0.75rem; color:var(--ink-faint);">Perubahan me-reset siklus</span>
+            </div>
+            <div class="param-grid">
+              <div class="param-item">
+                <label for="wca-inp-pop"><span>Populasi Tetesan (Npop)</span><span class="val" id="wca-val-pop">24</span></label>
+                <input type="range" id="wca-inp-pop" min="12" max="48" step="4" value="24" />
+              </div>
+              <div class="param-item">
+                <label for="wca-inp-nsr"><span>Sungai + Laut (Nsr)</span><span class="val" id="wca-val-nsr">4</span></label>
+                <input type="range" id="wca-inp-nsr" min="2" max="8" step="1" value="4" />
+              </div>
+              <div class="param-item">
+                <label for="wca-inp-dmax"><span>Radius Awal (dmax0)</span><span class="val" id="wca-val-dmax">0.45</span></label>
+                <input type="range" id="wca-inp-dmax" min="0.10" max="1.20" step="0.05" value="0.45" />
+              </div>
+              <div class="param-item">
+                <label for="wca-inp-c"><span>Konstanta Aliran (C)</span><span class="val" id="wca-val-c">2.0</span></label>
+                <input type="range" id="wca-inp-c" min="1.2" max="2.8" step="0.2" value="2.0" />
+              </div>
+              <div class="param-item">
+                <label for="wca-inp-speed"><span>Kecepatan (langkah/dtk)</span><span class="val" id="wca-val-speed">2.5</span></label>
+                <input type="range" id="wca-inp-speed" min="0.5" max="12" step="0.5" value="2.5" />
+              </div>
+              <div class="param-item">
+                <label for="wca-inp-seed"><span>Seed PRNG</span><span class="val">Tetap</span></label>
+                <input type="number" class="field-input" id="wca-inp-seed" value="42" min="1" max="99999" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Meja Kerja Interaktif Mekanisme Hidrologi WCA -->
+      <section class="panel" data-ui>
+        <div class="panel-header">
           <div>
-            <div class="slide-context">Slide 10 · Modul WCA (1/6): Konsep &amp; Metafora</div>
-            <h1 class="slide-heading">Metafora Siklus Air Menuju Laut</h1>
-            <p class="slide-keyline">Aliran kecil mengalir ke sungai, sungai bermuara ke laut (titik terbaik), lalu penguapan dan hujan menjaga keragaman.</p>
+            <h2 class="panel-title">Bedah Mekanisme Hidrologi &amp; Formulasi Matematis WCA</h2>
+            <p class="panel-subtitle">Pilih sub-modul untuk mempelajari pembagian debit aliran proporsional NSn, vektor aliran C=2, dan penyusutan radius penguapan dmax.</p>
           </div>
         </div>
 
-        <div class="split-grid">
-          <div class="card-panel canvas-card">
-            <canvas id="wca-meta-canvas"></canvas>
-          </div>
+        <div class="subtab-bar" data-ui id="wca-subtabs">
+          <button type="button" class="subtab-btn active" data-ui data-sub="hierarchy">Hierarki &amp; Intensitas NSn</button>
+          <button type="button" class="subtab-btn" data-ui data-sub="flow">Sandbox Aliran C=2 &amp; Tukar Peran</button>
+          <button type="button" class="subtab-btn" data-ui data-sub="evap">Penguapan dmax &amp; Hujan Baru</button>
+          <button type="button" class="subtab-btn" data-ui data-sub="formulas">Rumus &amp; Tabel 6 Tahap</button>
+        </div>
 
-          <div class="card-panel" style="justify-content:space-between; gap:0.75rem;">
-            <div style="font-size:var(--fs-small); color:var(--theme-primary); font-weight:700;">
-              Klik Elemen Siklus Air untuk Menyorot Perannya
+        <!-- Sub-view 1: Hierarki & Intensitas NSn -->
+        <div id="wca-sub-hierarchy" class="wca-subview">
+          <div class="grid-12" style="margin-top:0.35rem;">
+            <div class="span-5 panel-navy" data-ui>
+              <strong style="color:var(--ink); font-size:0.92rem;">Alokasi Proporsional Anak Sungai (NSn)</strong>
+              <p class="panel-subtitle" style="margin:0.35rem 0 0.75rem;">
+                Tetesan terbaik ke-1 diangkat menjadi <strong>Laut</strong>, peringkat 2 hingga <code>Nsr</code> menjadi <strong>Sungai</strong>, dan sisanya <code>N_stream = Npop - Nsr</code> dibagi secara proporsional mengikuti keunggulan fitness masing-masing muara.
+              </p>
+              <div class="param-grid">
+                <div class="param-item">
+                  <label for="wca-ns-pop"><span>Contoh Npop</span><span class="val" id="wca-ns-pop-val">24</span></label>
+                  <input type="range" id="wca-ns-pop" min="12" max="40" step="2" value="24" />
+                </div>
+                <div class="param-item">
+                  <label for="wca-ns-nsr"><span>Contoh Nsr</span><span class="val" id="wca-ns-nsr-val">4</span></label>
+                  <input type="range" id="wca-ns-nsr" min="2" max="6" step="1" value="4" />
+                </div>
+              </div>
+              <div class="formula-block" data-ui style="margin-top:0.75rem;">
+                <code>C_n = f(X_n) - f(X_{Nsr+1}) ; NS_n = round(|C_n / sum(C)| * N_stream)</code>
+              </div>
             </div>
-
-            <button type="button" class="btn btn-accent wca-pick" data-focus="sea" style="justify-content:space-between; padding:0.75rem 1rem; text-align:left;">
-              <span style="display:inline-flex; align-items:center; gap:0.65rem;"><span class="role-chip" style="color:#fae0a5; border-color:#d8a33a;">SEA</span> <span><strong>Laut (Sea)</strong> → Solusi Terbaik Global (#1)</span></span>
-              <span class="tabular" style="font-size:0.85em; color:var(--text-secondary);">1 Agen</span>
-            </button>
-
-            <button type="button" class="btn wca-pick" data-focus="river" style="justify-content:space-between; padding:0.75rem 1rem; text-align:left;">
-              <span style="display:inline-flex; align-items:center; gap:0.65rem;"><span class="role-chip">RIV</span> <span><strong>Sungai (River)</strong> → Terbaik Berikutnya</span></span>
-              <span class="tabular" style="font-size:0.85em; color:var(--text-secondary);">Nsr − 1</span>
-            </button>
-
-            <button type="button" class="btn wca-pick" data-focus="stream" style="justify-content:space-between; padding:0.75rem 1rem; text-align:left;">
-              <span style="display:inline-flex; align-items:center; gap:0.65rem;"><span class="role-chip">STR</span> <span><strong>Aliran (Stream)</strong> → Kandidat Lainnya</span></span>
-              <span class="tabular" style="font-size:0.85em; color:var(--text-secondary);">Npop − Nsr</span>
-            </button>
-
-            <button type="button" class="btn wca-pick" data-focus="evap" style="justify-content:space-between; padding:0.75rem 1rem; text-align:left;">
-              <span style="display:inline-flex; align-items:center; gap:0.65rem;"><span class="role-chip">EVP</span> <span><strong>Uap &amp; Hujan</strong> → Eksplorasi Ulang (&lt; dmax)</span></span>
-              <span style="font-size:0.85em; color:var(--text-secondary);">Siklus</span>
-            </button>
-
-            <div class="formula-box" id="wca-meta-caption">
-              Laut berada di titik paling rendah yang pernah ditemukan dan menjadi muara akhir seluruh sungai.
+            <div class="span-7">
+              <div id="wca-ns-output" class="mini-card-grid"></div>
             </div>
           </div>
         </div>
-      `;
 
-      const canvas = container.querySelector('#wca-meta-canvas');
-      const captionEl = container.querySelector('#wca-meta-caption');
-      const renderer = new WCARenderer();
-      const obj = getObjective('sphere');
+        <!-- Sub-view 2: Sandbox Aliran C=2 & Pertukaran Peran -->
+        <div id="wca-sub-flow" class="wca-subview hidden">
+          <div class="grid-12" style="margin-top:0.35rem;">
+            <div class="span-7">
+              <div class="canvas-stage-compact" data-ui>
+                <canvas id="wca-flow-canvas"></canvas>
+              </div>
+            </div>
+            <div class="span-5 panel-navy" data-ui style="display:flex; flex-direction:column; gap:0.65rem;">
+              <strong style="color:var(--ink); font-size:0.92rem;">Mengapa Konstanta Aliran C = 2 Penting?</strong>
+              <p class="panel-subtitle" style="margin:0;">
+                Dengan <code>X_baru = X + rand(0,1) * C * (X_induk - X)</code> dan <code>C = 2</code>, jarak aliran mencakup rentang <code>[0, 2d]</code>. Artinya tetesan air tidak hanya berhenti di antara dirinya dan sungai, tetapi juga mampu melampaui posisi sungai (<em>overshoot</em>) untuk menemukan cekungan yang lebih rendah di sisi seberang.
+              </p>
+              <div style="display:flex; flex-direction:column; gap:0.45rem;">
+                <button type="button" class="btn btn-wca" data-flow="normal">1. Aliran Normal Menuju Sungai (0 &lt; r*C &lt; 1)</button>
+                <button type="button" class="btn btn-gold" data-flow="swap">2. Overshoot (1 &lt; r*C &le; 2) &rarr; Tukar Peran!</button>
+              </div>
+              <div class="formula-block" data-ui>
+                <code id="wca-flow-eq">X_stream(t+1) = X_stream(t) + rand() * 2 * (X_river - X_stream)</code>
+              </div>
+            </div>
+          </div>
+        </div>
 
-      const demoState = {
-        phase: 'HIERARCHY',
-        dmax: 1.15,
-        drops: [
-          { id: 1, x: 0.1, y: -0.1, prevX: 0.1, prevY: -0.1, fitness: 0.02, role: 'sea', riverIndex: 0, parentId: null, trail: [] },
-          { id: 2, x: -1.8, y: 1.4, prevX: -1.8, prevY: 1.4, fitness: 5.2, role: 'river', riverIndex: 1, parentId: 1, trail: [] },
-          { id: 3, x: 2.1, y: -1.5, prevX: 2.1, prevY: -1.5, fitness: 6.6, role: 'river', riverIndex: 2, parentId: 1, trail: [] },
-          { id: 4, x: -3.5, y: 2.9, prevX: -3.5, prevY: 2.9, fitness: 20.6, role: 'stream', riverIndex: 1, parentId: 2, trail: [] },
-          { id: 5, x: -2.8, y: 0.3, prevX: -2.8, prevY: 0.3, fitness: 7.9, role: 'stream', riverIndex: 1, parentId: 2, trail: [] },
-          { id: 6, x: 3.6, y: -2.8, prevX: 3.6, prevY: -2.8, fitness: 20.8, role: 'stream', riverIndex: 2, parentId: 3, trail: [] },
-          { id: 7, x: 1.4, y: 2.6, prevX: 1.4, prevY: 2.6, fitness: 8.7, role: 'stream', riverIndex: 0, parentId: 1, trail: [] },
-          { id: 8, x: -0.8, y: -2.9, prevX: -0.8, prevY: -2.9, fitness: 9.0, role: 'stream', riverIndex: 0, parentId: 1, trail: [] }
+        <!-- Sub-view 3: Penguapan dmax & Hujan -->
+        <div id="wca-sub-evap" class="wca-subview hidden">
+          <div class="grid-12" style="margin-top:0.35rem;">
+            <div class="span-6 panel-navy" data-ui>
+              <strong style="color:var(--ink); font-size:0.92rem;">Simulator Penyusutan Adaptif Radius Penguapan <code>dmax(t)</code></strong>
+              <p class="panel-subtitle" style="margin:0.35rem 0 0.75rem;">
+                Geser progres iterasi di bawah untuk melihat penyusutan linier <code>dmax</code>. Pada awal pencarian, <code>dmax</code> besar sehingga memicu eksplorasi luas; mendekati akhir iterasi, <code>dmax</code> mengecil untuk memfokuskan eksploitasi presisi di sekitar Laut.
+              </p>
+              <div class="param-item">
+                <label for="wca-evap-iter"><span>Iterasi ke-t (dari 40)</span><span class="val" id="wca-evap-iter-val">10</span></label>
+                <input type="range" id="wca-evap-iter" min="0" max="40" step="1" value="10" />
+              </div>
+              <div class="kpi-strip" data-ui style="margin-top:0.75rem;">
+                <div class="kpi-cell" data-ui>
+                  <span class="kpi-label">dmax(0) Awal</span>
+                  <span class="kpi-val">0.450</span>
+                </div>
+                <div class="kpi-cell" data-ui>
+                  <span class="kpi-label">dmax(t) Saat Ini</span>
+                  <span class="kpi-val sky" id="wca-evap-cur">0.338</span>
+                </div>
+                <div class="kpi-cell" data-ui>
+                  <span class="kpi-label">Fokus Fase</span>
+                  <span class="kpi-val gold" id="wca-evap-focus">Transisi</span>
+                </div>
+              </div>
+            </div>
+            <div class="span-6" style="display:flex; flex-direction:column; gap:0.65rem;">
+              <div class="formula-block" data-ui>
+                <code>Jika ||X_river - X_sea|| &lt; d_max  atau  rand() &lt; 0.1  &rarr;  Uapkan &amp; Hujan</code>
+                <div class="formula-note">Mencegah seluruh sungai menumpuk di titik Laut yang berisiko merupakan minimum lokal.</div>
+              </div>
+              <div class="formula-block" data-ui>
+                <code>Hujan Global: X_baru = X_min + rand() * (X_max - X_min)</code>
+                <div class="formula-note">Diterapkan pada sungai yang menguap untuk menjelajahi area baru ruang pencarian.</div>
+              </div>
+              <div class="formula-block" data-ui>
+                <code>Hujan Lokal: X_baru = X_sea + sqrt(mu) * randn(0, 1)</code>
+                <div class="formula-note">Diterapkan pada aliran langsung ke Laut untuk memperhalus pencarian di sekitar muara terbaik.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sub-view 4: Rumus & Tabel 6 Tahap -->
+        <div id="wca-sub-formulas" class="wca-subview hidden">
+          <div class="table-wrap" style="margin-top:0.35rem;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Tahap Hidrologi</th>
+                  <th>Operasi Matematis WCA</th>
+                  <th>Tujuan Optimasi</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td><strong>Inisialisasi Hujan</strong></td><td>Bangkitkan <code>Npop</code> tetesan awal seragam dan evaluasi nilai objektif <code>f(X_i)</code>.</td><td>Sampling ruang solusi awal</td></tr>
+                <tr><td><strong>Pembentukan Hierarki</strong></td><td>Urutkan tetesan: terbaik #1 jadi <strong>Laut</strong>, peringkat 2..<code>Nsr</code> jadi <strong>Sungai</strong>, sisanya <strong>Aliran</strong>; hitung kuota <code>NS_n</code>.</td><td>Pembagian peran berbasis intensitas fitness</td></tr>
+                <tr><td><strong>Aliran Menuju Muara</strong></td><td>Aliran bergerak menuju Sungai/Laut induknya dan Sungai bergerak menuju Laut memakai faktor <code>rand() * C</code>.</td><td>Eksploitasi terarah ke lembah terendah</td></tr>
+                <tr><td><strong>Pertukaran Peran</strong></td><td>Jika Aliran lebih baik dari Sungainya (atau Sungai lebih baik dari Laut), tukar posisi dan perannya seketika.</td><td>Elitisme dinamis tanpa menunggu akhir iterasi</td></tr>
+                <tr><td><strong>Kondisi Penguapan</strong></td><td>Periksa apakah jarak Euclidean sungai/aliran ke Laut kurang dari <code>d_max</code>.</td><td>Deteksi kerumunan stagnan</td></tr>
+                <tr><td><strong>Presipitasi &amp; Update dmax</strong></td><td>Jatuhkan tetesan hujan baru bagi agen yang menguap dan kurangi <code>d_max(t+1) = d_max(t) - d_max(0)/Iter_maks</code>.</td><td>Transisi mulus eksplorasi ke eksploitasi</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    `;
+
+    // 1. Setup Mesin Utama WCA
+    const mainCanvas = container.querySelector('#wca-main-canvas');
+    const chartCanvas = container.querySelector('#wca-chart-canvas');
+    const chkTrails = container.querySelector('#wca-chk-trails');
+    const chkOpt = container.querySelector('#wca-chk-opt');
+    const btnPlay = container.querySelector('#wca-btn-play');
+
+    let currentObj = getObjective('rastrigin');
+    const renderer = new WCARenderer();
+
+    function readConfig() {
+      const pop = Number(container.querySelector('#wca-inp-pop')?.value || 24);
+      const nsr = Number(container.querySelector('#wca-inp-nsr')?.value || 4);
+      const dmax = Number(container.querySelector('#wca-inp-dmax')?.value || 0.45);
+      const flowC = Number(container.querySelector('#wca-inp-c')?.value || 2.0);
+      const seed = Number(container.querySelector('#wca-inp-seed')?.value || 42);
+      return {
+        objective: currentObj,
+        populationSize: pop,
+        nsr,
+        dmax,
+        flowConstant: flowC,
+        maxIterations: 40,
+        seed
+      };
+    }
+
+    const engine = new WCAEngine(readConfig());
+
+    function updateTelemetry(state) {
+      const hudPhase = container.querySelector('#wca-hud-phase');
+      const hudSea = container.querySelector('#wca-hud-sea');
+      const detailEl = container.querySelector('#wca-phase-detail');
+      const kpiIter = container.querySelector('#wca-kpi-iter');
+      const kpiEvents = container.querySelector('#wca-kpi-events');
+      const kpiBest = container.querySelector('#wca-kpi-best');
+      const kpiDmax = container.querySelector('#wca-kpi-dmax');
+      const kpiPop = container.querySelector('#wca-kpi-pop');
+
+      if (hudPhase) hudPhase.textContent = state.phaseLabel;
+      if (hudSea && state.bestSea) {
+        hudSea.textContent = `Laut: (${state.bestSea.x.toFixed(2)}, ${state.bestSea.y.toFixed(2)})`;
+      }
+      if (detailEl) detailEl.textContent = state.phaseDetail;
+      if (kpiIter) kpiIter.textContent = `${state.iteration} / ${state.maxIterations}`;
+      if (kpiEvents) {
+        kpiEvents.textContent = `${state.swaps.length} tukar · ${state.rainedDrops.length} hujan`;
+      }
+
+      const bf = state.bestSea ? state.bestSea.fitness : 0;
+      if (kpiBest) kpiBest.textContent = bf < 0.001 && bf > 0 ? bf.toExponential(2) : bf.toFixed(4);
+      if (kpiDmax) kpiDmax.textContent = state.dmax.toFixed(3);
+      if (kpiPop) kpiPop.textContent = `${engine.populationSize} tetes · Nsr = ${engine.nsr}`;
+
+      renderConvergenceChart(
+        chartCanvas,
+        [
+          {
+            label: 'WCA',
+            color: '#26aee4',
+            fillFlat: 'rgba(38, 174, 228, 0.14)',
+            data: state.history
+          }
         ],
-        swaps: []
-      };
-
-      const captions = {
-        sea: 'Laut adalah satu-satunya solusi terbaik global (#1). Semua sungai dan sebagian aliran bermuara langsung ke Laut.',
-        river: 'Sungai (S1, S2, ...) adalah solusi terbaik berikutnya yang menampung aliran dari bukit sebelum menuju Laut.',
-        stream: 'Aliran adalah tetesan air di lereng tinggi yang bergerak menuruni gradien menuju sungai atau laut induknya.',
-        evap: 'Lingkaran putus-putus dmax di sekitar Laut menandai zona penguapan: sungai yang terlalu dekat menguap menjadi hujan baru!'
-      };
-
-      let focus = 'sea';
-      let rafId = null;
-
-      container.querySelectorAll('.wca-pick').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          focus = btn.dataset.focus;
-          captionEl.textContent = captions[focus];
-          container.querySelectorAll('.wca-pick').forEach((b) => {
-            b.classList.toggle('btn-accent', b === btn);
-          });
-        });
-      });
-
-      function tick(ts) {
-        const st = {
-          ...demoState,
-          phase: focus === 'evap' ? 'EVAPORATION' : 'HIERARCHY',
-          drops: demoState.drops.map((d) => ({
-            ...d,
-            evaporating: focus === 'evap' && d.id === 7
-          }))
-        };
-        renderer.render(canvas, st, obj, {
-          alpha: 0.65,
-          timestamp: reducedMotion ? 0 : ts,
-          showOptimum: true,
-          showTrails: true
-        });
-
-        const { ctx, width, height } = syncCanvasSize(canvas);
-        const pulse = reducedMotion ? 0 : Math.sin(ts * 0.004) * 5;
-        const scale = (Math.min(width, height) * 0.86) / (obj.max - obj.min);
-        const toScreen = (wx, wy) => ({
-          x: width / 2 + wx * scale,
-          y: height / 2 - wy * scale
-        });
-
-        ctx.save();
-        if (focus === 'sea') {
-          const p = toScreen(0.1, -0.1);
-          ctx.strokeStyle = '#fde047';
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, 28 + pulse, 0, Math.PI * 2);
-          ctx.stroke();
-        } else if (focus === 'river') {
-          [
-            { x: -1.8, y: 1.4 },
-            { x: 2.1, y: -1.5 }
-          ].forEach((rv) => {
-            const p = toScreen(rv.x, rv.y);
-            ctx.strokeStyle = '#22d3ee';
-            ctx.lineWidth = 2.8;
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, 23 + pulse, 0, Math.PI * 2);
-            ctx.stroke();
-          });
-        } else if (focus === 'stream') {
-          const p = toScreen(-3.5, 2.9);
-          ctx.strokeStyle = '#bae6fd';
-          ctx.lineWidth = 2.5;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, 20 + pulse, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.font = '700 14px "Plus Jakarta Sans", sans-serif';
-          ctx.fillStyle = '#e0f2fe';
-          ctx.fillText('Tetesan Aliran', p.x + 24, p.y + 4);
+        {
+          title: 'Konvergensi Fitness Laut f(Xsea)',
+          maxIterations: state.maxIterations
         }
-        ctx.restore();
-
-        if (!reducedMotion) {
-          rafId = requestAnimationFrame(tick);
-        }
-      }
-
-      rafId = requestAnimationFrame(tick);
-      return () => {
-        if (rafId) cancelAnimationFrame(rafId);
-      };
+      );
     }
-  },
 
-  // =========================================================================
-  // SLIDE 11: WCA TAHAP 1-2 (HIERARKI & PEMBAGIAN ALIRAN PROPORSIONAL)
-  // =========================================================================
-  {
-    id: 'wca-hierarchy',
-    shortTitle: 'WCA: Hierarki & Intensitas',
-    title: 'Tahap 1–2: Hierarki & Pembagian Aliran Proporsional',
-    theme: 'wca',
-    notes: `
-      <ul>
-        <li><strong>Berbeda dari SFLA yang membagi sama rata!</strong> Di WCA, pembagian aliran bersifat <em>proporsional terhadap intensitas aliran</em> (kualitas fitness).</li>
-        <li><strong>Laut</strong> punya tarikan gravitasi terkuat sehingga menerima anak aliran paling banyak (di contoh ini: <strong>6 aliran</strong>), sedangkan sungai yang lebih lemah hanya menerima <strong>3, 2, dan 1 aliran</strong>.</li>
-      </ul>
-    `,
-    mount(container, { reducedMotion }) {
-      container.innerHTML = `
-        <div class="slide-top">
-          <div>
-            <div class="slide-context">Slide 11 · Modul WCA (2/6): Tahap 1 &amp; 2</div>
-            <h1 class="slide-heading">Hierarki &amp; Intensitas Aliran Proporsional (NSn)</h1>
-            <p class="slide-keyline">Laut dan sungai yang lebih rendah menarik lebih banyak anak aliran dibanding sungai yang lemah.</p>
-          </div>
-        </div>
-
-        <div class="card-panel" style="flex:1; display:flex; flex-direction:column; gap:0.9rem;">
-          <div class="ctrl-bar" style="justify-content:space-between;">
-            <div style="display:flex; gap:0.55rem; flex-wrap:wrap;" id="hier-btns">
-              <button type="button" class="btn btn-accent" data-st="0">1. Populasi Awal (16 Tetesan)</button>
-              <button type="button" class="btn" data-st="1">2. Pilih 1 Laut &amp; 3 Sungai (Nsr = 4)</button>
-              <button type="button" class="btn" data-st="2">3. Hubungkan 12 Aliran Proporsional</button>
-            </div>
-            <span id="hier-caption" style="font-size:var(--fs-ui); font-weight:700; color:var(--theme-primary);">
-              16 tetesan hujan dievaluasi ketinggiannya
-            </span>
-          </div>
-
-          <div class="canvas-card" style="flex:1; border-radius:14px; border:1px solid var(--border-subtle);">
-            <canvas id="wca-hier-canvas"></canvas>
-          </div>
-        </div>
-      `;
-
-      const canvas = container.querySelector('#wca-hier-canvas');
-      const capEl = container.querySelector('#hier-caption');
-
-      // 4 pemimpin (Laut mendapat 6 aliran, S1 mendapat 3, S2 mendapat 2, S3 mendapat 1 -> total 12 aliran)
-      const leaders = [
-        { id: 0, label: 'LAUT', quota: 6, color: '#fde047', fill: '#0284c7', colX: 0.18 },
-        { id: 1, label: 'Sungai S1', quota: 3, color: '#22d3ee', fill: '#0891b2', colX: 0.43 },
-        { id: 2, label: 'Sungai S2', quota: 2, color: '#38bdf8', fill: '#0284c7', colX: 0.65 },
-        { id: 3, label: 'Sungai S3', quota: 1, color: '#7dd3fc', fill: '#0369a1', colX: 0.84 }
-      ];
-
-      const allDrops = Array.from({ length: 16 }, (_, i) => {
-        const rx = 0.08 + ((i * 37) % 84) / 100;
-        const ry = 0.18 + ((i * 53) % 64) / 100;
-        return { i, cx: rx, cy: ry, tx: rx, ty: ry, rx, ry, group: -1, isLeader: i < 4 };
-      });
-
-      // Petakan 12 stream (indeks 4..15) ke kuota [6, 3, 2, 1]
-      let ptr = 4;
-      leaders.forEach((ld, gIdx) => {
-        allDrops[gIdx].group = gIdx;
-        for (let q = 0; q < ld.quota; q++) {
-          allDrops[ptr].group = gIdx;
-          allDrops[ptr].slotInGroup = q;
-          ptr++;
-        }
-      });
-
-      let stage = 0;
-      let rafId = null;
-
-      function setStage(s) {
-        stage = s;
-        container.querySelectorAll('#hier-btns .btn').forEach((b) => {
-          b.classList.toggle('btn-accent', Number(b.dataset.st) === s);
-        });
-
-        if (s === 0) {
-          capEl.textContent = '16 tetesan air tersebar acak di awal iterasi';
-          allDrops.forEach((d) => {
-            d.tx = d.rx;
-            d.ty = d.ry;
-          });
-        } else if (s === 1) {
-          capEl.textContent = 'Peringkat #1 menjadi Laut, #2–#4 menjadi Sungai, sisanya 12 Aliran';
-          allDrops.forEach((d, idx) => {
-            if (idx < 4) {
-              d.tx = leaders[idx].colX;
-              d.ty = 0.25;
-            } else {
-              d.tx = 0.1 + ((idx - 4) / 11) * 0.8;
-              d.ty = 0.74;
-            }
-          });
-        } else {
-          capEl.textContent = 'NSn proporsional: Laut menarik 6 aliran, S1 = 3 aliran, S2 = 2 aliran, S3 = 1 aliran!';
-          allDrops.forEach((d, idx) => {
-            if (idx < 4) {
-              d.tx = leaders[idx].colX;
-              d.ty = 0.23;
-            } else {
-              const ld = leaders[d.group];
-              const colOffset = (d.slotInGroup % 2 === 0 ? -1 : 1) * (ld.quota > 1 ? 0.038 : 0);
-              const row = Math.floor(d.slotInGroup / 2);
-              d.tx = ld.colX + colOffset;
-              d.ty = 0.5 + row * 0.16;
-            }
-          });
-        }
-      }
-
-      container.querySelectorAll('#hier-btns .btn').forEach((b) => {
-        b.addEventListener('click', () => setStage(Number(b.dataset.st)));
-      });
-
-      function tick() {
-        const { ctx, width, height } = syncCanvasSize(canvas);
-        ctx.clearRect(0, 0, width, height);
-
-        for (const d of allDrops) {
-          const sp = reducedMotion ? 1 : 0.11;
-          d.cx += (d.tx - d.cx) * sp;
-          d.cy += (d.ty - d.cy) * sp;
-        }
-
-        // Gambar garis aliran anak -> induk pada stage 2
-        if (stage === 2) {
-          ctx.save();
-          // Garis Sungai -> Laut
-          for (let r = 1; r < 4; r++) {
-            const seaD = allDrops[0];
-            const rivD = allDrops[r];
-            ctx.beginPath();
-            ctx.moveTo(rivD.cx * width, rivD.cy * height);
-            ctx.quadraticCurveTo(
-              ((seaD.cx + rivD.cx) / 2) * width,
-              height * 0.08,
-              seaD.cx * width,
-              seaD.cy * height
-            );
-            ctx.strokeStyle = 'rgba(34, 211, 238, 0.45)';
-            ctx.setLineDash([7, 5]);
-            ctx.lineWidth = 2.2;
-            ctx.stroke();
-          }
-          ctx.setLineDash([]);
-
-          // Garis Aliran -> Sungai/Laut
-          for (let i = 4; i < allDrops.length; i++) {
-            const st = allDrops[i];
-            const par = allDrops[st.group];
-            ctx.beginPath();
-            ctx.moveTo(st.cx * width, st.cy * height);
-            ctx.lineTo(par.cx * width, par.cy * height);
-            ctx.strokeStyle = 'rgba(125, 211, 252, 0.35)';
-            ctx.lineWidth = 1.8;
-            ctx.stroke();
-          }
-          ctx.restore();
-        }
-
-        // Gambar semua node
-        for (const d of allDrops) {
-          const px = d.cx * width;
-          const py = d.cy * height;
-          ctx.save();
-          ctx.translate(px, py);
-
-          if (stage >= 1 && d.isLeader) {
-            const ld = leaders[d.i];
-            const r = d.i === 0 ? 25 : 20;
-            ctx.beginPath();
-            if (d.i === 0) {
-              ctx.arc(0, 0, r, 0, Math.PI * 2);
-            } else {
-              ctx.moveTo(0, -r);
-              ctx.lineTo(r, 0);
-              ctx.lineTo(0, r);
-              ctx.lineTo(-r, 0);
-              ctx.closePath();
-            }
-            ctx.fillStyle = ld.fill;
-            ctx.strokeStyle = ld.color;
-            ctx.lineWidth = 3;
-            ctx.fill();
-            ctx.stroke();
-
-            ctx.font = '800 14px "Plus Jakarta Sans", sans-serif';
-            ctx.fillStyle = ld.color;
-            ctx.textAlign = 'center';
-            ctx.fillText(ld.label, 0, -r - 10);
-
-            if (stage === 2) {
-              ctx.font = '700 13px "Ubuntu Mono", monospace';
-              ctx.fillStyle = '#e2e8f0';
-              ctx.fillText(`NS = ${ld.quota} aliran`, 0, r + 20);
-            }
-          } else {
-            ctx.beginPath();
-            ctx.arc(0, 0, 12, 0, Math.PI * 2);
-            ctx.fillStyle = '#bae6fd';
-            ctx.strokeStyle = '#0c4a6e';
-            ctx.lineWidth = 2;
-            ctx.fill();
-            ctx.stroke();
-          }
-          ctx.restore();
-        }
-
-        rafId = requestAnimationFrame(tick);
-      }
-
-      rafId = requestAnimationFrame(tick);
-      return () => {
-        if (rafId) cancelAnimationFrame(rafId);
-      };
-    }
-  },
-
-  // =========================================================================
-  // SLIDE 12: WCA TAHAP 3-5 (ALIRAN MENGALIR & PERTUKARAN PERAN)
-  // =========================================================================
-  {
-    id: 'wca-flow',
-    shortTitle: 'WCA: Aliran & Tukar Peran',
-    title: 'Tahap 3–5: Aliran Mengalir (C ≈ 2) & Pertukaran Peran',
-    theme: 'wca',
-    notes: `
-      <ul>
-        <li><strong>Mengapa konstanta <code>C = 2</code> penting?</strong> Karena <code>rand · C</code> bernilai antara <code>0</code> sampai <code>2</code>!</li>
-        <li>Jika nilainya <code>&lt; 1</code>, aliran mendarat <em>sebelum</em> sungai; jika <code>&gt; 1</code>, aliran <em>melampaui</em> sungai untuk mengecek lereng di seberangnya!</li>
-        <li>Saat sebuah aliran kebetulan mendarat di cekungan lebih dalam dari sungainya, terjadi <strong>Pertukaran Peran (Role Swap)</strong> seketika!</li>
-      </ul>
-    `,
-    mount(container, { reducedMotion }) {
-      container.innerHTML = `
-        <div class="slide-top">
-          <div>
-            <div class="slide-context">Slide 12 · Modul WCA (3/6): Tahap 3 s.d. 5</div>
-            <h1 class="slide-heading">Aliran Mengalir &amp; Pertukaran Peran (Role Swap)</h1>
-            <p class="slide-keyline">Dengan konstanta <code>C ≈ 2</code>, aliran dapat melampaui sungai dan langsung bertukar peran bila menemukan titik lebih rendah.</p>
-          </div>
-        </div>
-
-        <div class="split-grid">
-          <div class="card-panel canvas-card">
-            <div class="stage-hud-overlay">
-              <div class="stage-badge">
-                <span class="stage-badge-code" id="flow-demo-code">ALIRAN C = 2</span>
-                <span id="flow-demo-text">Jangkauan 0..2× jarak memungkinkan eksplorasi seberang sungai</span>
-              </div>
-            </div>
-            <canvas id="wca-flow-canvas"></canvas>
-          </div>
-
-          <div class="card-panel" style="justify-content:space-between; gap:0.85rem;">
-            <div style="display:flex; flex-direction:column; gap:0.65rem;" id="flow-demo-btns">
-              <div style="font-size:var(--fs-small); color:var(--theme-primary); font-weight:700;">
-                Pilih Skenario Pergerakan Air
-              </div>
-              <button type="button" class="btn btn-accent" data-mode="normal" style="justify-content:flex-start; text-align:left; padding:0.75rem 1rem;">
-                <span class="role-chip">FLW</span>
-                <span><strong>Aliran Menuju Sungai:</strong> Mendekat pada rentang <code>C · d</code></span>
-              </button>
-              <button type="button" class="btn" data-mode="swap" style="justify-content:flex-start; text-align:left; padding:0.75rem 1rem;">
-                <span class="role-chip" style="color:#fae0a5; border-color:#d8a33a;">SWP</span>
-                <span><strong>Pertukaran Peran:</strong> Aliran melampaui sungai &amp; jadi pemimpin baru</span>
-              </button>
-            </div>
-
-            <div class="formula-box">
-              <code>X_aliran(t+1) = X_aliran + rand · C · (X_sungai − X_aliran)</code><br/>
-              <code>X_sungai(t+1) = X_sungai + rand · C · (X_laut − X_sungai)</code>
-            </div>
-
-            <p style="margin:0; font-size:var(--fs-ui); color:var(--text-secondary);">
-              Lingkaran kuning terang menandai pertukaran peran: ketika <code>f(X_aliran) &lt; f(X_sungai)</code>, sang aliran naik pangkat menjadi Sungai baru.
-            </p>
-          </div>
-        </div>
-      `;
-
-      const canvas = container.querySelector('#wca-flow-canvas');
-      const codeEl = container.querySelector('#flow-demo-code');
-      const textEl = container.querySelector('#flow-demo-text');
-      const renderer = new WCARenderer();
-      const obj = getObjective('sphere');
-
-      let mode = 'normal';
-      let startTs = performance.now();
-      let rafId = null;
-
-      container.querySelectorAll('#flow-demo-btns .btn').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          mode = btn.dataset.mode;
-          startTs = performance.now();
-          container.querySelectorAll('#flow-demo-btns .btn').forEach((b) => {
-            b.classList.toggle('btn-accent', b === btn);
-          });
-          if (mode === 'normal') {
-            codeEl.textContent = 'ALIRAN NORMAL';
-            textEl.textContent = 'Aliran bergerak menuju Sungai S1, dan S1 mengalir menuju Laut';
-          } else {
-            codeEl.textContent = 'ROLE SWAP';
-            textEl.textContent = 'Aliran melampaui S1 ke lembah lebih rendah → langsung tukar peran!';
-          }
-        });
-      });
-
-      function tick(now) {
-        const cycle = ((now - startTs) % 2600) / 2600;
-        const alpha = reducedMotion ? 1 : Math.min(1, cycle * 1.5);
-        const swapped = mode === 'swap' && cycle > 0.58;
-
-        const streamFrom = { x: -3.6, y: 2.6 };
-        const streamTo = mode === 'normal' ? { x: -2.2, y: 1.7 } : { x: -0.9, y: 0.55 };
-        const riverPos = { x: -1.9, y: 1.35 };
-
-        const st = {
-          phase: swapped ? 'ROLE_SWAP' : 'FLOW',
-          dmax: 0.55,
-          drops: [
-            { id: 1, x: 0.1, y: -0.1, prevX: 0.1, prevY: -0.1, fitness: 0.02, role: 'sea', riverIndex: 0, parentId: null, trail: [] },
-            {
-              id: 2,
-              x: swapped ? streamTo.x : riverPos.x,
-              y: swapped ? streamTo.y : riverPos.y,
-              prevX: riverPos.x,
-              prevY: riverPos.y,
-              fitness: swapped ? 1.1 : 5.4,
-              role: 'river',
-              riverIndex: 1,
-              parentId: 1,
-              trail: []
-            },
-            {
-              id: 3,
-              x: swapped ? riverPos.x : streamTo.x,
-              y: swapped ? riverPos.y : streamTo.y,
-              prevX: streamFrom.x,
-              prevY: streamFrom.y,
-              fitness: swapped ? 5.4 : 8.0,
-              role: 'stream',
-              riverIndex: 1,
-              parentId: 2,
-              trail: []
-            }
-          ],
-          swaps: swapped
-            ? [{ fromX: streamTo.x, fromY: streamTo.y, toX: riverPos.x, toY: riverPos.y, kind: 'STREAM_TO_RIVER' }]
-            : []
-        };
-
-        renderer.render(canvas, st, obj, {
-          alpha: swapped ? (cycle - 0.58) / 0.42 : alpha,
-          timestamp: now,
-          showOptimum: true,
-          showTrails: true
-        });
-
-        rafId = requestAnimationFrame(tick);
-      }
-
-      rafId = requestAnimationFrame(tick);
-      return () => {
-        if (rafId) cancelAnimationFrame(rafId);
-      };
-    }
-  },
-
-  // =========================================================================
-  // SLIDE 13: WCA TAHAP 6-8 (PENGUAPAN, HUJAN & PENYUSUTAN DMAX)
-  // =========================================================================
-  {
-    id: 'wca-evap',
-    shortTitle: 'WCA: Penguapan & Hujan',
-    title: 'Tahap 6–8: Penguapan (< dmax), Hujan & Penyusutan dmax',
-    theme: 'wca',
-    notes: `
-      <ul>
-        <li><strong>Apa yang terjadi jika semua sungai berkumpul di Laut terlalu cepat?</strong> Populasi kehilangan keragaman dan bisa terjebak di lembah palsu!</li>
-        <li><strong>Solusi WCA:</strong> Lingkaran <code>dmax</code> di sekitar Laut. Sungai yang masuk ke dalam jarak <code>&lt; dmax</code> dianggap <strong>menguap</strong> ke awan lalu turun kembali sebagai <strong>hujan baru</strong>!</li>
-        <li>Geser slider iterasi di kanan untuk menunjukkan bagaimana <code>dmax</code> makin mengecil mendekati akhir iterasi agar pencarian makin tajam!</li>
-      </ul>
-    `,
-    mount(container, { reducedMotion }) {
-      container.innerHTML = `
-        <div class="slide-top">
-          <div>
-            <div class="slide-context">Slide 13 · Modul WCA (4/6): Tahap 6 s.d. 8</div>
-            <h1 class="slide-heading">Penguapan, Hujan &amp; Penyempitan Radius dmax</h1>
-            <p class="slide-keyline">Sungai yang berjarak <code>&lt; dmax</code> dari Laut menguap menjadi hujan baru, sementara <code>dmax</code> menyusut tiap iterasi.</p>
-          </div>
-        </div>
-
-        <div class="split-grid">
-          <div class="card-panel canvas-card">
-            <canvas id="wca-evap-canvas"></canvas>
-          </div>
-
-          <div class="card-panel" style="justify-content:space-between; gap:0.85rem;">
-            <div style="display:flex; flex-direction:column; gap:0.65rem;">
-              <div style="font-size:var(--fs-small); color:var(--theme-primary); font-weight:700;">
-                Lihat Siklus Uap → Hujan &amp; Penyusutan dmax
-              </div>
-              <div style="display:flex; gap:0.5rem; flex-wrap:wrap;" id="evap-phase-btns">
-                <button type="button" class="btn btn-accent" data-ph="EVAPORATION">1. Menguap (&lt; dmax)</button>
-                <button type="button" class="btn" data-ph="RAIN">2. Turun Hujan Baru</button>
-              </div>
-
-              <div class="param-row" style="margin-top:0.5rem;">
-                <label>Progres Iterasi (Penyusutan dmax) <span class="val" id="evap-iter-lbl">Iterasi 5 / 40 (dmax = 1.40)</span></label>
-                <input type="range" class="ctrl-range" style="width:100%;" id="evap-iter-slider" min="1" max="38" value="5" />
-              </div>
-            </div>
-
-            <div class="formula-box">
-              <code>Jika ‖X_laut − X_sungai‖ &lt; dmax &nbsp;⇒&nbsp; Menguap &amp; Hujan</code><br/>
-              <code>dmax(t+1) = dmax(t) − dmax(0) / Iterasi_Maks</code>
-            </div>
-
-            <p style="margin:0; font-size:var(--fs-ui); color:var(--text-secondary);">
-              Di awal iterasi, <code>dmax</code> lebar untuk mendorong <strong>eksplorasi</strong>. Di akhir iterasi, <code>dmax</code> menyempit agar air fokus <strong>mengeksploitasi</strong> sekitar Laut.
-            </p>
-          </div>
-        </div>
-      `;
-
-      const canvas = container.querySelector('#wca-evap-canvas');
-      const slider = container.querySelector('#evap-iter-slider');
-      const lbl = container.querySelector('#evap-iter-lbl');
-      const renderer = new WCARenderer();
-      const obj = getObjective('rastrigin');
-
-      let demoPhase = 'EVAPORATION';
-      let animTs = performance.now();
-      let rafId = null;
-
-      container.querySelectorAll('#evap-phase-btns .btn').forEach((b) => {
-        b.addEventListener('click', () => {
-          demoPhase = b.dataset.ph;
-          animTs = performance.now();
-          container.querySelectorAll('#evap-phase-btns .btn').forEach((x) => {
-            x.classList.toggle('btn-accent', x === b);
-          });
-        });
-      });
-
-      function tick(now) {
-        const iter = Number(slider.value);
-        const dmaxVal = Math.max(0.12, 1.6 * (1 - iter / 40));
-        lbl.textContent = `Iterasi ${iter} / 40 (dmax = ${dmaxVal.toFixed(2)})`;
-
-        const alpha = reducedMotion ? 0.7 : (((now - animTs) % 2000) / 2000);
-
-        const state = {
-          phase: demoPhase,
-          dmax: dmaxVal,
-          drops: [
-            { id: 1, x: 0, y: 0, prevX: 0, prevY: 0, fitness: 0, role: 'sea', riverIndex: 0, parentId: null, trail: [] },
-            {
-              id: 2,
-              x: demoPhase === 'RAIN' ? -3.1 : 0.45,
-              y: demoPhase === 'RAIN' ? 2.8 : 0.35,
-              prevX: demoPhase === 'RAIN' ? -3.1 : 0.45,
-              prevY: demoPhase === 'RAIN' ? 2.8 : 0.35,
-              fitness: 2,
-              role: 'river',
-              riverIndex: 1,
-              parentId: 1,
-              evaporating: demoPhase === 'EVAPORATION',
-              justRained: demoPhase === 'RAIN',
-              trail: []
-            },
-            {
-              id: 3,
-              x: demoPhase === 'RAIN' ? 2.9 : -0.35,
-              y: demoPhase === 'RAIN' ? -2.4 : -0.42,
-              prevX: demoPhase === 'RAIN' ? 2.9 : -0.35,
-              prevY: demoPhase === 'RAIN' ? -2.4 : -0.42,
-              fitness: 3,
-              role: 'stream',
-              riverIndex: 0,
-              parentId: 1,
-              evaporating: demoPhase === 'EVAPORATION',
-              justRained: demoPhase === 'RAIN',
-              trail: []
-            },
-            { id: 4, x: 2.2, y: 2.1, prevX: 2.2, prevY: 2.1, fitness: 8, role: 'river', riverIndex: 2, parentId: 1, trail: [] }
-          ],
-          swaps: []
-        };
-
-        renderer.render(canvas, state, obj, {
+    const runner = new SimulationRunner({
+      stepsPerSecond: 2.5,
+      reducedMotion,
+      onStep: () => {
+        const st = engine.step();
+        updateTelemetry(st);
+        return st.phase === 'DONE';
+      },
+      onRender: (alpha, now) => {
+        const st = engine.getState();
+        renderer.render(mainCanvas, st, currentObj, {
           alpha,
           timestamp: now,
-          showOptimum: true,
-          showTrails: true
+          showTrails: chkTrails ? chkTrails.checked : true,
+          showOptimum: chkOpt ? chkOpt.checked : true
         });
+      }
+    });
 
-        rafId = requestAnimationFrame(tick);
+    runner.onPlayStateChange = (playing) => {
+      if (btnPlay) btnPlay.textContent = playing ? 'Jeda (P)' : 'Mulai (P)';
+    };
+
+    function reconfigureAndReset() {
+      runner.pause();
+      engine.configure(readConfig());
+      updateTelemetry(engine.getState());
+      runner.notifyReset();
+    }
+
+    btnPlay?.addEventListener('click', () => runner.togglePlay());
+    container.querySelector('#wca-btn-step')?.addEventListener('click', () => runner.stepOnce());
+    container.querySelector('#wca-btn-cycle')?.addEventListener('click', () => {
+      runner.pause();
+      const st = engine.stepFullIteration();
+      updateTelemetry(st);
+      runner.notifyReset();
+    });
+    container.querySelector('#wca-btn-reset')?.addEventListener('click', () => {
+      engine.reset();
+      updateTelemetry(engine.getState());
+      runner.notifyReset();
+    });
+
+    const objBtns = container.querySelectorAll('#wca-obj-group .seg-btn');
+    objBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        objBtns.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentObj = getObjective(btn.dataset.obj);
+        reconfigureAndReset();
+      });
+    });
+
+    const sliderBindings = [
+      ['#wca-inp-pop', '#wca-val-pop', true],
+      ['#wca-inp-nsr', '#wca-val-nsr', true],
+      ['#wca-inp-dmax', '#wca-val-dmax', true],
+      ['#wca-inp-c', '#wca-val-c', true],
+      ['#wca-inp-speed', '#wca-val-speed', false]
+    ];
+
+    for (const [inpSel, valSel, shouldReset] of sliderBindings) {
+      const inp = container.querySelector(inpSel);
+      const valEl = container.querySelector(valSel);
+      inp?.addEventListener('input', () => {
+        if (valEl) valEl.textContent = inp.value;
+        if (shouldReset) reconfigureAndReset();
+        else runner.setSpeed(Number(inp.value));
+      });
+    }
+
+    container.querySelector('#wca-inp-seed')?.addEventListener('change', () => reconfigureAndReset());
+
+    // 2. Sub-Workbench WCA
+    const subButtons = container.querySelectorAll('#wca-subtabs .subtab-btn');
+    const subViews = {
+      hierarchy: container.querySelector('#wca-sub-hierarchy'),
+      flow: container.querySelector('#wca-sub-flow'),
+      evap: container.querySelector('#wca-sub-evap'),
+      formulas: container.querySelector('#wca-sub-formulas')
+    };
+
+    let activeSub = 'hierarchy';
+    subButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        activeSub = btn.dataset.sub || 'hierarchy';
+        subButtons.forEach((b) => b.classList.toggle('active', b === btn));
+        Object.entries(subViews).forEach(([key, el]) => {
+          el?.classList.toggle('hidden', key !== activeSub);
+        });
+        if (activeSub === 'flow') renderFlowSandbox();
+      });
+    });
+
+    // Sub-view 1: Kalkulator Alokasi Proporsional NSn
+    const nsPopInp = container.querySelector('#wca-ns-pop');
+    const nsNsrInp = container.querySelector('#wca-ns-nsr');
+    const nsOutput = container.querySelector('#wca-ns-output');
+
+    function renderNsAllocation() {
+      const npop = Number(nsPopInp?.value || 24);
+      const nsr = Math.min(Math.floor(npop / 2), Number(nsNsrInp?.value || 4));
+      const popVal = container.querySelector('#wca-ns-pop-val');
+      const nsrVal = container.querySelector('#wca-ns-nsr-val');
+      if (popVal) popVal.textContent = String(npop);
+      if (nsrVal) nsrVal.textContent = String(nsr);
+      if (!nsOutput) return;
+
+      const nStreams = npop - nsr;
+      // Contoh profil biaya realistis terurut menaik: Laut terkecil, diikuti Sungai 1..Nsr-1, lalu batas Nsr+1
+      const sampleCosts = Array.from({ length: nsr + 1 }, (_, i) => 1.2 + i * i * 2.4);
+      const refCost = sampleCosts[nsr];
+      const cn = sampleCosts.slice(0, nsr).map((c) => Math.abs(c - refCost));
+      const sumCn = cn.reduce((a, b) => a + b, 0) || 1;
+
+      const quotas = cn.map((val) => Math.round((val / sumCn) * nStreams));
+      let diff = nStreams - quotas.reduce((a, b) => a + b, 0);
+      let idx = 0;
+      while (diff !== 0) {
+        if (diff > 0) {
+          quotas[idx % nsr] += 1;
+          diff -= 1;
+        } else if (quotas[idx % nsr] > 0) {
+          quotas[idx % nsr] -= 1;
+          diff += 1;
+        }
+        idx += 1;
       }
 
-      rafId = requestAnimationFrame(tick);
-      return () => {
-        if (rafId) cancelAnimationFrame(rafId);
-      };
-    }
-  },
-
-  // =========================================================================
-  // SLIDE 14: RINGKASAN SIKLUS LENGKAP WCA
-  // =========================================================================
-  {
-    id: 'wca-cycle',
-    shortTitle: 'WCA: Alur Lengkap',
-    title: 'Alur Lengkap Algoritma WCA',
-    theme: 'wca',
-    notes: `
-      <ul>
-        <li>Ringkasan 6 tahap WCA sebelum kita menjalankan simulasi WCA penuh di slide berikutnya.</li>
-        <li>Klik tahap mana pun untuk menyorot persamaan matematisnya.</li>
-      </ul>
-    `,
-    mount(container) {
-      const stages = [
-        {
-          num: 'Tahap 1',
-          name: 'Inisialisasi Hujan Awal',
-          role: 'Eksplorasi Awal',
-          formula: 'Xi = LB + rand · (UB − LB),  i = 1..Npop',
-          desc: 'Sebar populasi tetesan air secara acak lalu hitung ketinggian (fitness) tiap titik.'
-        },
-        {
-          num: 'Tahap 2',
-          name: 'Hierarki Laut & Sungai',
-          role: 'Intensitas Proporsional',
-          formula: '1 Laut + (Nsr−1) Sungai;  NSn ∝ |f(Xn) − f(X_Nsr+1)|',
-          desc: 'Titik terendah jadi Laut, berikutnya jadi Sungai, sisanya jadi Aliran secara proporsional.'
-        },
-        {
-          num: 'Tahap 3',
-          name: 'Aliran & Sungai Mengalir',
-          role: 'Eksploitasi Terarah',
-          formula: 'X(t+1) = X(t) + rand · C · (X_induk − X(t)),  C ≈ 2',
-          desc: 'Aliran bergerak menuju Sungai/Laut, dan Sungai bergerak bermuara menuju Laut.'
-        },
-        {
-          num: 'Tahap 4',
-          name: 'Pertukaran Peran',
-          role: 'Pembaruan Pemimpin',
-          formula: 'Jika f(X_aliran) < f(X_induk)  ⇒  Tukar Peran',
-          desc: 'Aliran yang menemukan posisi lebih rendah naik pangkat menjadi Sungai atau Laut baru.'
-        },
-        {
-          num: 'Tahap 5',
-          name: 'Penguapan (< dmax)',
-          role: 'Deteksi Stagnasi',
-          formula: 'Jika ‖X_laut − X_sungai‖ < dmax  ⇒  Menguap',
-          desc: 'Sungai/aliran yang sudah terlalu dekat dengan Laut menguap agar tidak menumpuk sia-sia.'
-        },
-        {
-          num: 'Tahap 6',
-          name: 'Hujan Baru & Update dmax',
-          role: 'Eksplorasi + Fokus Akhir',
-          formula: 'Hujan acak / sekitar Laut;  dmax ← dmax − dmax0 / Tmax',
-          desc: 'Tetesan baru lahir menggantikan uap, sementara radius dmax diperkecil tiap iterasi.'
-        }
-      ];
-
-      container.innerHTML = `
-        <div class="slide-top">
-          <div>
-            <div class="slide-context">Slide 14 · Modul WCA (5/6): Diagram Siklus</div>
-            <h1 class="slide-heading">Enam Tahap Siklus Hidrologi WCA</h1>
-            <p class="slide-keyline">Siklus mengalir, bertukar peran, menguap, dan hujan menyatukan gravitasi menuju Laut dengan regenerasi alami.</p>
-          </div>
-        </div>
-
-        <div style="flex:1; display:flex; flex-direction:column; justify-content:space-between; gap:1rem;">
-          <div id="wca-flow-cards" style="display:grid; grid-template-columns:repeat(3, 1fr); gap:0.9rem; flex:1;">
-            ${stages
-              .map(
-                (s, i) => `
-              <button type="button" class="card-panel wca-step-card" data-idx="${i}" style="text-align:left; cursor:pointer; justify-content:space-between; border-color:${i === 2 ? 'var(--theme-primary)' : 'var(--border-subtle)'}; background:${i === 2 ? 'var(--theme-tint)' : 'var(--bg-card)'};">
-                <div>
-                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
-                    <span class="tabular" style="font-size:var(--fs-ui); font-weight:800; color:var(--theme-primary);">${s.num}</span>
-                    <span style="font-size:var(--fs-small); font-weight:600; padding:0.18rem 0.55rem; border-radius:999px; background:var(--bg-elevated); color:var(--theme-secondary);">${s.role}</span>
-                  </div>
-                  <div style="font-size:var(--fs-h2); font-weight:800; margin-bottom:0.35rem;">${s.name}</div>
-                  <div style="font-size:var(--fs-ui); color:var(--text-secondary);">${s.desc}</div>
-                </div>
-              </button>
-            `
-              )
-              .join('')}
-          </div>
-
-          <div class="formula-box" id="wca-cycle-detail" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
-            <span><strong>Tahap 3 (Aliran &amp; Sungai Mengalir):</strong> <code>X(t+1) = X(t) + rand · C · (X_induk − X(t)), C ≈ 2</code></span>
-            <span style="color:var(--theme-primary); font-size:var(--fs-small);">Klik kartu tahap di atas untuk melihat rumus detail</span>
-          </div>
-        </div>
-      `;
-
-      const detailBox = container.querySelector('#wca-cycle-detail');
-      const cards = container.querySelectorAll('.wca-step-card');
-
-      cards.forEach((card) => {
-        card.addEventListener('click', () => {
-          const idx = Number(card.dataset.idx);
-          const st = stages[idx];
-          cards.forEach((c) => {
-            const active = c === card;
-            c.style.borderColor = active ? 'var(--theme-primary)' : 'var(--border-subtle)';
-            c.style.background = active ? 'var(--theme-tint)' : 'var(--bg-card)';
-          });
-          detailBox.innerHTML = `
-            <span><strong>${st.num} (${st.name}):</strong> <code>${st.formula}</code></span>
-            <span style="color:var(--theme-secondary); font-size:var(--fs-small);">${st.role}</span>
+      nsOutput.innerHTML = quotas
+        .map((q, i) => {
+          const isSea = i === 0;
+          const borderCol = isSea ? '#fdbb16' : '#26aee4';
+          const title = isSea ? 'LAUT (Peringkat #1)' : `Sungai S${i} (Peringkat #${i + 1})`;
+          const pct = Math.round((q / Math.max(1, nStreams)) * 100);
+          return `
+            <div class="mini-card" data-ui style="border-top: 2px solid ${borderCol};">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <strong style="color:var(--ink); font-size:0.86rem;">${title}</strong>
+                <span class="tabular" style="font-size:0.78rem; color:${borderCol}; font-weight:700;">${q} aliran (${pct}%)</span>
+              </div>
+              <span class="tabular" style="font-size:0.78rem; color:var(--ink-muted);">Contoh biaya f = ${sampleCosts[i].toFixed(1)}</span>
+              <div style="height:6px; background:var(--its-navy); border-radius:3px; overflow:hidden;">
+                <div style="height:100%; width:${pct}%; background:${borderCol};"></div>
+              </div>
+            </div>
           `;
-        });
-      });
+        })
+        .join('');
     }
-  },
 
-  // =========================================================================
-  // SLIDE 15: SIMULASI INTERAKTIF WCA PENUH (F-04, F-05..F-10, F-13)
-  // =========================================================================
-  {
-    id: 'wca-sim',
-    shortTitle: 'Simulasi WCA',
-    title: 'Laboratorium Simulasi Interaktif WCA',
-    theme: 'wca',
-    notes: `
-      <ul>
-        <li><strong>Urutan demo yang disarankan:</strong>
-          <ol>
-            <li>Klik tombol <strong>Step (S)</strong> 5 kali dari awal untuk memperlihatkan urutan tahap persis sesuai teori: <code>Hierarki Laut &amp; Sungai → Aliran Mengalir → Pertukaran Peran → Penguapan Air → Hujan &amp; Update dmax</code>.</li>
-            <li>Klik <strong>Play (P)</strong> dan amati garis aliran melengkung bermuara ke Laut, kilatan kuning saat pertukaran peran, serta uap &amp; hujan saat sungai masuk ke lingkaran <code>dmax</code>!</li>
-            <li>Uji pada <strong>Ackley</strong> atau <strong>Rastrigin</strong> untuk melihat ketangguhan mekanisme hujan melepaskan diri dari lembah lokal.</li>
-          </ol>
-        </li>
-      </ul>
-    `,
-    mount(container, { reducedMotion, registerHooks }) {
-      container.innerHTML = `
-        <div class="slide-top" style="align-items:center;">
-          <div>
-            <div class="slide-context">Slide 15 · Modul WCA (6/6): Simulasi Langsung</div>
-            <h1 class="slide-heading" style="font-size:clamp(1.5rem, 2.2vw, 2.6rem);">Simulasi WCA: Aliran Sungai ke Laut</h1>
-          </div>
+    nsPopInp?.addEventListener('input', renderNsAllocation);
+    nsNsrInp?.addEventListener('input', renderNsAllocation);
 
-          <div class="ctrl-bar">
-            <button type="button" class="btn btn-accent" id="wca-btn-play">▶ Play</button>
-            <button type="button" class="btn btn-step" id="wca-btn-step" title="Maju 1 tahap algoritma (Tombol S)">⏭ Step</button>
-            <button type="button" class="btn" id="wca-btn-reset" title="Ulangi dari awal (Tombol R)">↺ Reset</button>
+    // Sub-view 2: Sandbox Aliran C=2 & Tukar Peran
+    const flowCanvas = container.querySelector('#wca-flow-canvas');
+    let flowMode = 'normal';
 
-            <label class="ctrl-field">
-              <span>Fungsi:</span>
-              <select class="ctrl-select" id="wca-select-obj">
-                <option value="sphere" selected>Sphere (1 Lembah)</option>
-                <option value="rastrigin">Rastrigin (Banyak Lembah)</option>
-                <option value="ackley">Ackley (Corong Pusat)</option>
-              </select>
-            </label>
+    function renderFlowSandbox() {
+      if (!flowCanvas) return;
+      const { ctx, width, height } = syncCanvasSize(flowCanvas);
+      ctx.fillStyle = '#041126';
+      ctx.fillRect(0, 0, width, height);
 
-            <label class="ctrl-field">
-              <span>Kecepatan:</span>
-              <input type="range" class="ctrl-range" id="wca-speed" min="0.6" max="12" step="0.3" value="2.8" />
-            </label>
+      const streamPt = { x: width * 0.16, y: height * 0.62 };
+      const riverPt = { x: width * 0.52, y: height * 0.48 };
+      const maxReachPt = { x: width * 0.88, y: height * 0.34 };
 
-            <button type="button" class="btn" id="wca-btn-params" aria-expanded="false">Parameter</button>
-          </div>
-        </div>
+      // Zona jangkauan [0, 2d]
+      ctx.save();
+      ctx.strokeStyle = 'rgba(117, 189, 224, 0.35)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(streamPt.x, streamPt.y);
+      ctx.lineTo(maxReachPt.x, maxReachPt.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
 
-        <div class="sim-layout">
-          <div class="card-panel canvas-card">
-            <div class="stage-hud-overlay">
-              <div class="stage-badge">
-                <span class="stage-badge-code" id="wca-hud-code">INIT</span>
-                <span id="wca-hud-label">Inisialisasi Tetesan</span>
-              </div>
-              <div class="hud-metrics">
-                <div class="hud-pill">Iterasi: <strong id="wca-hud-iter">0 / 40</strong></div>
-                <div class="hud-pill">dmax: <strong id="wca-hud-dmax">0.450</strong></div>
-                <div class="hud-pill">Laut: <strong id="wca-hud-best">0.0000</strong></div>
-              </div>
-            </div>
-            <canvas id="wca-sim-canvas"></canvas>
-          </div>
+      ctx.font = '600 10.5px "Plus Jakarta Sans", sans-serif';
+      ctx.fillStyle = '#8a99b2';
+      ctx.fillText('Batas jangkauan maksimum 2d (saat rand = 1, C = 2)', riverPt.x - 20, riverPt.y + 42);
 
-          <div style="display:flex; flex-direction:column; gap:0.85rem; min-height:0;">
-            <div class="card-panel" style="padding:0.9rem 1.1rem; gap:0.45rem;">
-              <div style="font-size:var(--fs-small); color:var(--theme-primary); font-weight:700;">Status Tahap Saat Ini</div>
-              <div id="wca-stage-desc" style="font-size:var(--fs-ui); font-weight:600; color:var(--text-primary); min-height:2.8em;"></div>
-              <div style="display:flex; gap:0.85rem; flex-wrap:wrap; font-size:var(--fs-small); color:var(--text-muted); padding-top:0.35rem; border-top:1px solid var(--border-subtle);">
-                <span style="color:#fae0a5;">● Lingkar Emas = <strong>Laut</strong></span>
-                <span style="color:#53bce3;">◆ Ketupat = <strong>Sungai</strong></span>
-                <span style="color:#baeaff;">▲ Tetes = <strong>Aliran</strong></span>
-              </div>
-            </div>
+      const targetPt =
+        flowMode === 'normal'
+          ? { x: width * 0.39, y: height * 0.53 }
+          : { x: width * 0.74, y: height * 0.39 };
 
-            <div class="card-panel canvas-card" style="flex:1; min-height:170px;">
-              <canvas id="wca-chart-canvas"></canvas>
-            </div>
+      // Panah aliran
+      ctx.beginPath();
+      ctx.moveTo(streamPt.x, streamPt.y);
+      ctx.lineTo(targetPt.x, targetPt.y);
+      ctx.strokeStyle = flowMode === 'swap' ? '#fdbb16' : '#26aee4';
+      ctx.lineWidth = 2.6;
+      ctx.stroke();
 
-            <div class="card-panel" style="padding:0.75rem 1rem; flex-direction:row; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
-              <label style="display:inline-flex; align-items:center; gap:0.45rem; font-size:var(--fs-small); font-weight:700; cursor:pointer;">
-                <input type="checkbox" id="wca-chk-opt" checked style="width:17px; height:17px; accent-color:var(--gold-crown);" />
-                <span>Target Optimum (0, 0)</span>
-              </label>
-              <label style="display:inline-flex; align-items:center; gap:0.45rem; font-size:var(--fs-small); font-weight:700; cursor:pointer;">
-                <input type="checkbox" id="wca-chk-trail" checked style="width:17px; height:17px; accent-color:var(--theme-primary);" />
-                <span>Garis Aliran</span>
-              </label>
-              <span class="tabular" style="font-size:var(--fs-small); font-weight:700; color:var(--text-muted);" id="wca-coord-readout">(0.00, 0.00)</span>
-            </div>
-          </div>
+      // Node Aliran awal
+      ctx.beginPath();
+      ctx.arc(streamPt.x, streamPt.y, 8, 0, Math.PI * 2);
+      ctx.fillStyle = '#cee5ff';
+      ctx.fill();
+      ctx.fillStyle = '#ecf3ff';
+      ctx.font = '700 11px "Plus Jakarta Sans", sans-serif';
+      ctx.fillText('Aliran Awal (f = 14.2)', streamPt.x - 10, streamPt.y + 24);
 
-          <!-- Collapsible Parameter Panel (F-06) -->
-          <div class="param-drawer hidden" id="wca-param-drawer">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <strong style="font-size:var(--fs-ui); color:var(--theme-primary);">Parameter Algoritma WCA</strong>
-              <button type="button" class="close-btn" id="wca-close-params" aria-label="Tutup Parameter">&times;</button>
-            </div>
+      // Node Sungai
+      ctx.beginPath();
+      ctx.moveTo(riverPt.x, riverPt.y - 10);
+      ctx.lineTo(riverPt.x + 10, riverPt.y);
+      ctx.lineTo(riverPt.x, riverPt.y + 10);
+      ctx.lineTo(riverPt.x - 10, riverPt.y);
+      ctx.closePath();
+      ctx.fillStyle = '#26aee4';
+      ctx.fill();
+      ctx.fillStyle = '#ecf3ff';
+      ctx.fillText('Sungai Induk (f = 5.4)', riverPt.x - 36, riverPt.y - 16);
 
-            <div class="param-row">
-              <label>Ukuran Populasi (Npop) <span class="val" id="val-wca-pop">24</span></label>
-              <input type="range" class="ctrl-range" style="width:100%;" id="inp-wca-pop" min="10" max="72" step="2" value="24" />
-            </div>
+      // Node Posisi Baru
+      ctx.beginPath();
+      ctx.arc(targetPt.x, targetPt.y, 9.5, 0, Math.PI * 2);
+      ctx.fillStyle = flowMode === 'swap' ? '#fdbb16' : '#26aee4';
+      ctx.fill();
 
-            <div class="param-row">
-              <label>Jumlah Sungai + Laut (Nsr) <span class="val" id="val-wca-nsr">4</span></label>
-              <input type="range" class="ctrl-range" style="width:100%;" id="inp-wca-nsr" min="2" max="8" step="1" value="4" />
-            </div>
-
-            <div class="param-row">
-              <label>Ambang Penguapan Awal (dmax) <span class="val" id="val-wca-dmax">0.45</span></label>
-              <input type="range" class="ctrl-range" style="width:100%;" id="inp-wca-dmax" min="0.05" max="1.5" step="0.05" value="0.45" />
-            </div>
-
-            <div class="param-row">
-              <label>Konstanta Aliran (C) <span class="val" id="val-wca-c">2.0</span></label>
-              <input type="range" class="ctrl-range" style="width:100%;" id="inp-wca-c" min="1.2" max="2.6" step="0.1" value="2.0" />
-            </div>
-
-            <div class="param-row">
-              <label for="inp-wca-seed">Seed Acak (Reprodusibel)</label>
-              <input type="number" class="ctrl-input" id="inp-wca-seed" value="42" />
-            </div>
-
-            <button type="button" class="btn btn-accent" id="wca-apply-params" style="margin-top:0.4rem;">
-              Terapkan &amp; Reset Simulasi
-            </button>
-          </div>
-        </div>
-      `;
-
-      const simCanvas = container.querySelector('#wca-sim-canvas');
-      const chartCanvas = container.querySelector('#wca-chart-canvas');
-      const btnPlay = container.querySelector('#wca-btn-play');
-      const btnStep = container.querySelector('#wca-btn-step');
-      const btnReset = container.querySelector('#wca-btn-reset');
-      const selObj = container.querySelector('#wca-select-obj');
-      const speedInput = container.querySelector('#wca-speed');
-      const chkOpt = container.querySelector('#wca-chk-opt');
-      const chkTrail = container.querySelector('#wca-chk-trail');
-
-      const hudCode = container.querySelector('#wca-hud-code');
-      const hudLabel = container.querySelector('#wca-hud-label');
-      const hudIter = container.querySelector('#wca-hud-iter');
-      const hudDmax = container.querySelector('#wca-hud-dmax');
-      const hudBest = container.querySelector('#wca-hud-best');
-      const stageDesc = container.querySelector('#wca-stage-desc');
-      const coordReadout = container.querySelector('#wca-coord-readout');
-
-      const drawer = container.querySelector('#wca-param-drawer');
-      const btnParams = container.querySelector('#wca-btn-params');
-      const inpPop = container.querySelector('#inp-wca-pop');
-      const inpNsr = container.querySelector('#inp-wca-nsr');
-      const inpDmax = container.querySelector('#inp-wca-dmax');
-      const inpC = container.querySelector('#inp-wca-c');
-      const inpSeed = container.querySelector('#inp-wca-seed');
-
-      let currentObj = getObjective(selObj.value);
-      const renderer = new WCARenderer();
-      const engine = new WCAEngine({
-        objective: currentObj,
-        populationSize: Number(inpPop.value),
-        nsr: Number(inpNsr.value),
-        dmax: Number(inpDmax.value),
-        flowConstant: Number(inpC.value),
-        maxIterations: 40,
-        seed: Number(inpSeed.value)
-      });
-
-      function updateHudAndChart() {
-        const st = engine.getState();
-        hudCode.textContent = st.phase;
-        hudLabel.textContent = st.phaseLabel;
-        hudIter.textContent = `${st.iteration} / ${st.maxIterations}`;
-        hudDmax.textContent = st.dmax.toFixed(3);
-        const bf = st.bestSea.fitness;
-        hudBest.textContent = bf < 0.0001 ? bf.toExponential(2) : bf.toFixed(4);
-        stageDesc.textContent = st.phaseDetail;
-        coordReadout.textContent = `Laut: (${st.bestSea.x.toFixed(2)}, ${st.bestSea.y.toFixed(2)})`;
-
-        renderConvergenceChart(
-          chartCanvas,
-          [
-            {
-              label: 'WCA',
-              color: '#38bdf8',
-              fillTop: 'rgba(56, 189, 248, 0.28)',
-              data: st.history
-            }
-          ],
-          { maxIterations: st.maxIterations, title: 'Konvergensi Fitness Terbaik (WCA)' }
-        );
+      const eqEl = container.querySelector('#wca-flow-eq');
+      if (flowMode === 'normal') {
+        ctx.fillStyle = '#75bde0';
+        ctx.fillText('Posisi Baru (f = 8.1 > 5.4, tetap Aliran)', targetPt.x - 45, targetPt.y - 15);
+        if (eqEl) eqEl.textContent = 'rand = 0.64 -> bergerak 1.28d mendekati Sungai; peran tetap.';
+      } else {
+        ctx.fillStyle = '#fdbb16';
+        ctx.fillText('Overshoot! (f = 2.1 < 5.4 -> NAIK JADI SUNGAI)', targetPt.x - 75, targetPt.y - 15);
+        if (eqEl) eqEl.textContent = 'rand = 0.82 -> bergerak 1.64d melampaui Sungai & menemukan lembah lebih dalam -> TUKAR PERAN!';
       }
 
-      const runner = new SimulationRunner({
-        stepsPerSecond: Number(speedInput.value),
-        reducedMotion,
-        onStep: () => {
-          const st = engine.step();
-          updateHudAndChart();
-          return st.phase === 'DONE';
-        },
-        onRender: (alpha, ts) => {
-          renderer.render(simCanvas, engine.getState(), currentObj, {
-            alpha,
-            timestamp: ts,
-            showOptimum: chkOpt.checked,
-            showTrails: chkTrail.checked
-          });
-        }
+      ctx.restore();
+    }
+
+    container.querySelectorAll('[data-flow]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        flowMode = btn.dataset.flow || 'normal';
+        renderFlowSandbox();
       });
+    });
 
-      runner.onPlayStateChange = (isPlaying) => {
-        btnPlay.textContent = isPlaying ? '⏸ Pause' : '▶ Play';
-      };
+    // Sub-view 3: Slider penyusutan dmax
+    const evapIterInp = container.querySelector('#wca-evap-iter');
+    function updateEvapCalc() {
+      const t = Number(evapIterInp?.value || 10);
+      const tMax = 40;
+      const d0 = 0.45;
+      const dCur = Math.max(0.00001, d0 * (1 - t / tMax));
 
-      function rebuildSimulation() {
-        currentObj = getObjective(selObj.value);
-        engine.configure({
-          objective: currentObj,
-          populationSize: Number(inpPop.value),
-          nsr: Number(inpNsr.value),
-          dmax: Number(inpDmax.value),
-          flowConstant: Number(inpC.value),
-          maxIterations: 40,
-          seed: Number(inpSeed.value)
-        });
+      const tEl = container.querySelector('#wca-evap-iter-val');
+      const curEl = container.querySelector('#wca-evap-cur');
+      const focEl = container.querySelector('#wca-evap-focus');
+      if (tEl) tEl.textContent = String(t);
+      if (curEl) curEl.textContent = dCur.toFixed(3);
+      if (focEl) {
+        focEl.textContent = t < 14 ? 'Eksplorasi Luas' : t < 30 ? 'Transisi' : 'Eksploitasi Halus';
+      }
+    }
+    evapIterInp?.addEventListener('input', updateEvapCalc);
+
+    registerHooks?.({
+      togglePlay: () => runner.togglePlay(),
+      step: () => runner.stepOnce(),
+      reset: () => {
+        engine.reset();
+        updateTelemetry(engine.getState());
         runner.notifyReset();
-        updateHudAndChart();
       }
+    });
 
-      btnPlay.addEventListener('click', () => {
-        if (engine.getState().phase === 'DONE') rebuildSimulation();
-        runner.togglePlay();
-      });
-      btnStep.addEventListener('click', () => runner.stepOnce());
-      btnReset.addEventListener('click', () => rebuildSimulation());
-      selObj.addEventListener('change', () => rebuildSimulation());
-      speedInput.addEventListener('input', () => runner.setSpeed(Number(speedInput.value)));
+    const onResize = () => {
+      updateTelemetry(engine.getState());
+      runner.notifyReset();
+      if (activeSub === 'flow') renderFlowSandbox();
+    };
+    window.addEventListener('resize', onResize);
 
-      btnParams.addEventListener('click', () => {
-        const hidden = drawer.classList.toggle('hidden');
-        btnParams.setAttribute('aria-expanded', String(!hidden));
-      });
-      container.querySelector('#wca-close-params').addEventListener('click', () => {
-        drawer.classList.add('hidden');
-        btnParams.setAttribute('aria-expanded', 'false');
-      });
+    renderNsAllocation();
+    updateEvapCalc();
+    updateTelemetry(engine.getState());
+    runner.startLoop();
 
-      [
-        [inpPop, '#val-wca-pop'],
-        [inpNsr, '#val-wca-nsr'],
-        [inpDmax, '#val-wca-dmax'],
-        [inpC, '#val-wca-c']
-      ].forEach(([inp, sel]) => {
-        inp.addEventListener('input', () => {
-          container.querySelector(sel).textContent = inp.value;
-        });
-      });
-
-      container.querySelector('#wca-apply-params').addEventListener('click', () => {
-        drawer.classList.add('hidden');
-        rebuildSimulation();
-      });
-
-      const onResize = () => updateHudAndChart();
-      window.addEventListener('resize', onResize);
-
-      registerHooks({
-        togglePlay: () => btnPlay.click(),
-        step: () => btnStep.click(),
-        reset: () => btnReset.click()
-      });
-
-      updateHudAndChart();
-      runner.startLoop();
-
-      return () => {
-        window.removeEventListener('resize', onResize);
-        runner.destroy();
-      };
-    }
+    return () => {
+      window.removeEventListener('resize', onResize);
+      runner.destroy();
+    };
   }
-];
+};
 
-  exports.wcaSlides = wcaSlides;
+
+  exports.tabWca = tabWca;
   },
   "algorithms/wca.js": function(exports, __require) {
 /**
@@ -4987,9 +3976,9 @@ class WCAEngine {
   },
   "render/wcaRenderer.js": function(exports, __require) {
 /**
- * Renderer Visual WCA — Metafora Siklus Air (PRD Bagian 8.2 & 14)
- * Menampilkan Laut, Sungai, Aliran, garis lengkung aliran air, kilatan pertukaran peran,
- * lingkaran radius penguapan dmax, uap naik, dan rintik hujan.
+ * Renderer Visual WCA (Metafora Siklus Air Hidrologi)
+ * Menggunakan Palet Resmi ITS: Biru Tua Lambang (#127BBE), FTK Summer Sky (#26AEE4),
+ * Biru Muda Lambang (#75BDE0), dan Kuning Tua ITS (#FDBB16) untuk titik Laut terbaik.
  */
 const {  ContourMapCache, syncCanvasSize  } = __require("render/contourRenderer.js");
 class WCARenderer {
@@ -5019,7 +4008,7 @@ class WCARenderer {
 
     const seaDrop = state.drops.find((d) => d.role === 'sea');
 
-    // 1. Gambar lingkaran radius penguapan dmax di sekitar Laut
+    // 1. Lingkaran radius penguapan dmax di sekitar Laut
     if (seaDrop && state.phase !== 'INIT') {
       const seaPos = dropScreenMap.get(seaDrop.id);
       const dmaxPx = Math.max(8, vp.worldDistToPx(state.dmax));
@@ -5028,24 +4017,24 @@ class WCARenderer {
       ctx.arc(seaPos.x, seaPos.y, dmaxPx, 0, Math.PI * 2);
       ctx.fillStyle =
         state.phase === 'EVAPORATION'
-          ? 'rgba(103, 232, 249, 0.16)'
-          : 'rgba(56, 189, 248, 0.07)';
+          ? 'rgba(38, 174, 228, 0.18)'
+          : 'rgba(117, 189, 224, 0.08)';
       ctx.fill();
-      ctx.strokeStyle = 'rgba(103, 232, 249, 0.65)';
-      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = 'rgba(117, 189, 224, 0.72)';
+      ctx.lineWidth = 1.5;
       ctx.setLineDash([5, 5]);
       ctx.stroke();
       ctx.setLineDash([]);
 
       if (!options.compact && dmaxPx > 22) {
-        ctx.font = '700 11px "Ubuntu Mono", monospace';
-        ctx.fillStyle = '#a5f3fc';
-        ctx.fillText(`dmax`, seaPos.x + dmaxPx + 5, seaPos.y + 4);
+        ctx.font = '700 11px "Plus Jakarta Sans", sans-serif';
+        ctx.fillStyle = '#cee5ff';
+        ctx.fillText('dmax', seaPos.x + dmaxPx + 6, seaPos.y + 4);
       }
       ctx.restore();
     }
 
-    // 2. Gambar jaringan garis lengkung aliran (Stream -> River/Sea, River -> Sea)
+    // 2. Jaringan aliran hidrologi (Stream -> River/Sea, River -> Sea)
     if (state.phase !== 'INIT' && showTrails) {
       ctx.save();
       const dashOffset = -(timestamp * 0.03) % 24;
@@ -5060,7 +4049,6 @@ class WCARenderer {
         const dist = Math.hypot(dx, dy);
         if (dist < 4) continue;
 
-        // Titik kontrol lengkung organik seperti sungai alami
         const nx = -dy * 0.14;
         const ny = dx * 0.14;
         const cx = (from.x + to.x) / 2 + nx;
@@ -5071,13 +4059,13 @@ class WCARenderer {
         ctx.quadraticCurveTo(cx, cy, to.x, to.y);
 
         if (d.role === 'river') {
-          ctx.strokeStyle = 'rgba(34, 211, 238, 0.52)';
-          ctx.lineWidth = 2.4;
+          ctx.strokeStyle = 'rgba(38, 174, 228, 0.58)';
+          ctx.lineWidth = 2.3;
           ctx.setLineDash([8, 5]);
           ctx.lineDashOffset = dashOffset;
         } else {
-          ctx.strokeStyle = 'rgba(125, 211, 252, 0.26)';
-          ctx.lineWidth = 1.3;
+          ctx.strokeStyle = 'rgba(117, 189, 224, 0.28)';
+          ctx.lineWidth = 1.25;
           ctx.setLineDash([]);
         }
         ctx.stroke();
@@ -5086,14 +4074,14 @@ class WCARenderer {
       ctx.restore();
     }
 
-    // 3. Efek Kilatan Pertukaran Peran (ROLE_SWAP)
+    // 3. Kilatan pertukaran peran (ROLE_SWAP)
     if (state.phase === 'ROLE_SWAP' && state.swaps.length > 0) {
       for (const sw of state.swaps) {
         this.drawSwapFlash(ctx, vp, sw, alpha);
       }
     }
 
-    // 4. Gambar agen dari kasta terendah ke tertinggi: Stream -> River -> Sea
+    // 4. Urutan render: Stream -> River -> Sea
     const orderRank = { stream: 0, river: 1, sea: 2 };
     const orderedDrops = [...state.drops].sort(
       (a, b) => (orderRank[a.role] ?? 0) - (orderRank[b.role] ?? 0)
@@ -5112,12 +4100,10 @@ class WCARenderer {
         this.drawStream(ctx, pos.x, pos.y, parentPos);
       }
 
-      // 5. Efek uap membubung saat EVAPORATION
       if (state.phase === 'EVAPORATION' && d.evaporating) {
         this.drawVaporEffect(ctx, pos.x, pos.y, alpha);
       }
 
-      // 6. Efek rintik hujan jatuh saat RAIN
       if (state.phase === 'RAIN' && d.justRained) {
         this.drawRainEffect(ctx, pos.x, pos.y, alpha);
       }
@@ -5133,15 +4119,14 @@ class WCARenderer {
     }
     ctx.rotate(angle);
 
-    // Bentuk tetesan air meruncing ke arah aliran
     ctx.beginPath();
     ctx.moveTo(8, 0);
-    ctx.quadraticCurveTo(-2, 6, -6, 0);
-    ctx.quadraticCurveTo(-2, -6, 8, 0);
+    ctx.quadraticCurveTo(-2, 5.8, -6, 0);
+    ctx.quadraticCurveTo(-2, -5.8, 8, 0);
     ctx.closePath();
-    ctx.fillStyle = '#bae6fd';
-    ctx.strokeStyle = '#082f49';
-    ctx.lineWidth = 1.6;
+    ctx.fillStyle = '#cee5ff';
+    ctx.strokeStyle = '#03132b';
+    ctx.lineWidth = 1.5;
     ctx.fill();
     ctx.stroke();
     ctx.restore();
@@ -5151,15 +4136,14 @@ class WCARenderer {
     ctx.save();
     ctx.translate(x, y);
 
-    const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, 18);
-    glow.addColorStop(0, 'rgba(34, 211, 238, 0.55)');
-    glow.addColorStop(1, 'rgba(34, 211, 238, 0)');
+    const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, 17);
+    glow.addColorStop(0, 'rgba(38, 174, 228, 0.55)');
+    glow.addColorStop(1, 'rgba(38, 174, 228, 0)');
     ctx.fillStyle = glow;
     ctx.beginPath();
-    ctx.arc(0, 0, 18, 0, Math.PI * 2);
+    ctx.arc(0, 0, 17, 0, Math.PI * 2);
     ctx.fill();
 
-    // Bentuk belah ketupat membulat (diamond) untuk Sungai agar mudah dibedakan dari Aliran & Laut
     const r = compact ? 8.5 : 10.5;
     ctx.beginPath();
     ctx.moveTo(0, -r);
@@ -5167,17 +4151,17 @@ class WCARenderer {
     ctx.lineTo(0, r);
     ctx.lineTo(-r, 0);
     ctx.closePath();
-    ctx.fillStyle = '#22d3ee';
-    ctx.strokeStyle = '#ecfeff';
-    ctx.lineWidth = 2;
+    ctx.fillStyle = '#26aee4';
+    ctx.strokeStyle = '#ecf3ff';
+    ctx.lineWidth = 1.9;
     ctx.fill();
     ctx.stroke();
 
     if (!compact) {
-      ctx.font = '800 10px "Ubuntu Mono", monospace';
-      ctx.fillStyle = '#042f2e';
+      ctx.font = '800 9.5px "Plus Jakarta Sans", sans-serif';
+      ctx.fillStyle = '#03132b';
       ctx.textAlign = 'center';
-      ctx.fillText(`S${riverIdx}`, 0, 3.5);
+      ctx.fillText(`S${riverIdx}`, 0, 3.4);
     }
     ctx.restore();
   }
@@ -5186,36 +4170,35 @@ class WCARenderer {
     ctx.save();
     ctx.translate(x, y);
 
-    const glow = ctx.createRadialGradient(0, 0, 3, 0, 0, 28);
-    glow.addColorStop(0, 'rgba(56, 189, 248, 0.85)');
-    glow.addColorStop(0.55, 'rgba(251, 191, 36, 0.35)');
+    const glow = ctx.createRadialGradient(0, 0, 3, 0, 0, 26);
+    glow.addColorStop(0, 'rgba(18, 123, 190, 0.82)');
+    glow.addColorStop(0.55, 'rgba(253, 187, 22, 0.34)');
     glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = glow;
     ctx.beginPath();
-    ctx.arc(0, 0, 28, 0, Math.PI * 2);
+    ctx.arc(0, 0, 26, 0, Math.PI * 2);
     ctx.fill();
 
     const r = compact ? 11 : 13.5;
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, Math.PI * 2);
-    ctx.fillStyle = '#0284c7';
-    ctx.strokeStyle = '#fde047';
-    ctx.lineWidth = 3;
+    ctx.fillStyle = '#127bbe';
+    ctx.strokeStyle = '#fdbb16';
+    ctx.lineWidth = 2.8;
     ctx.fill();
     ctx.stroke();
 
-    // Ikon gelombang air putih di tengah Laut
     ctx.beginPath();
     ctx.moveTo(-6, 1);
     ctx.quadraticCurveTo(-3, -3, 0, 1);
     ctx.quadraticCurveTo(3, 5, 6, 1);
     ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2.2;
+    ctx.lineWidth = 2.1;
     ctx.stroke();
 
     if (!compact) {
-      ctx.font = '800 11px "Ubuntu Mono", monospace';
-      ctx.fillStyle = '#fde047';
+      ctx.font = '800 10.5px "Plus Jakarta Sans", sans-serif';
+      ctx.fillStyle = '#fdbb16';
       ctx.textAlign = 'center';
       ctx.fillText('LAUT', 0, -r - 6);
     }
@@ -5230,47 +4213,45 @@ class WCARenderer {
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
-    ctx.strokeStyle = '#fde047';
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#fdbb16';
+    ctx.lineWidth = 2.6;
     ctx.stroke();
 
-    // Kilatan bintang cahaya di titik pemimpin baru
-    const r = 10 + (1 - alpha) * 16;
+    const r = 10 + (1 - alpha) * 15;
     ctx.beginPath();
     ctx.arc(a.x, a.y, r, 0, Math.PI * 2);
-    ctx.strokeStyle = '#fde047';
-    ctx.lineWidth = 2.4;
+    ctx.strokeStyle = '#fdbb16';
+    ctx.lineWidth = 2.2;
     ctx.stroke();
 
-    ctx.font = '800 12px "Plus Jakarta Sans", sans-serif';
-    ctx.fillStyle = '#fde047';
+    ctx.font = '800 11px "Plus Jakarta Sans", sans-serif';
+    ctx.fillStyle = '#fdbb16';
     ctx.fillText('TUKAR PERAN', a.x + 12, a.y - 10);
     ctx.restore();
   }
 
   drawVaporEffect(ctx, x, y, alpha) {
     ctx.save();
-    const lift = alpha * 34;
+    const lift = alpha * 32;
     for (let i = 0; i < 3; i++) {
       const ox = (i - 1) * 8;
       const oy = -lift - i * 7;
       ctx.beginPath();
-      ctx.arc(x + ox, y + oy, 5 + i * 1.5, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(224, 242, 254, ${Math.max(0.15, 0.78 - alpha * 0.5)})`;
+      ctx.arc(x + ox, y + oy, 4.8 + i * 1.4, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(214, 227, 255, ${Math.max(0.16, 0.76 - alpha * 0.5)})`;
       ctx.fill();
     }
-    ctx.font = '700 11px "Plus Jakarta Sans", sans-serif';
-    ctx.fillStyle = '#e0f2fe';
+    ctx.font = '700 10.5px "Plus Jakarta Sans", sans-serif';
+    ctx.fillStyle = '#d6e3ff';
     ctx.fillText('UAP', x + 10, y - lift - 8);
     ctx.restore();
   }
 
   drawRainEffect(ctx, x, y, alpha) {
     ctx.save();
-    const dropY = y - (1 - alpha) * 44;
+    const dropY = y - (1 - alpha) * 42;
 
-    // Garis rintik hujan jatuh dari atas
-    ctx.strokeStyle = '#7dd3fc';
+    ctx.strokeStyle = '#75bde0';
     ctx.lineWidth = 2;
     for (const dx of [-6, 0, 6]) {
       ctx.beginPath();
@@ -5279,11 +4260,10 @@ class WCARenderer {
       ctx.stroke();
     }
 
-    // Riak pendaratan hujan
     if (alpha > 0.3) {
       ctx.beginPath();
       ctx.arc(x, y, 8 + alpha * 14, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(125, 211, 252, ${Math.max(0, 0.85 - alpha * 0.7)})`;
+      ctx.strokeStyle = `rgba(117, 189, 224, ${Math.max(0, 0.82 - alpha * 0.68)})`;
       ctx.lineWidth = 1.8;
       ctx.stroke();
     }
@@ -5291,648 +4271,639 @@ class WCARenderer {
   }
 }
 
-
   exports.WCARenderer = WCARenderer;
   },
-  "slides/outroSlides.js": function(exports, __require) {
+  "tabs/tabKomparasi.js": function(exports, __require) {
 /**
- * Slide 16–18: Perbandingan SFLA vs WCA Berdampingan, Studi Kasus Cloud VM, dan Kesimpulan
+ * Tab 4: Komparasi Sinkron SFLA vs WCA & Studi Kasus Penjadwalan Tugas Cloud VM
+ * Menampilkan arena pengujian head-to-head pada seed dan koordinat awal identik,
+ * matriks perbandingan arsitektur, serta simulator minimasi Makespan 16 Cloudlet pada 4 VM heterogen.
  */
 const {  getObjective  } = __require("core/objectives.js");
 const {  createRng  } = __require("core/rng.js");
 const {  SimulationRunner  } = __require("core/engine.js");
 const {  SFLAEngine  } = __require("algorithms/sfla.js");
 const {  WCAEngine  } = __require("algorithms/wca.js");
-const {  CloudScheduleOptimizer, generateCloudTasks  } = __require("algorithms/cloudScheduling.js");
+const {  CloudScheduleOptimizer, generateCloudTasks, DEFAULT_VMS  } = __require("algorithms/cloudScheduling.js");
 const {  SFLARenderer  } = __require("render/sflaRenderer.js");
 const {  WCARenderer  } = __require("render/wcaRenderer.js");
-const {  syncCanvasSize  } = __require("render/contourRenderer.js");
 const {  renderConvergenceChart  } = __require("render/chart.js");
-const outroSlides = [
-  // =========================================================================
-  // SLIDE 16: PERBANDINGAN BERDAMPINGAN SFLA VS WCA (F-11 & Kriteria #8)
-  // =========================================================================
-  {
-    id: 'comparison',
-    shortTitle: 'SFLA vs WCA',
-    title: 'Perbandingan Langsung: SFLA vs WCA',
-    theme: 'compare',
-    notes: `
-      <ul>
-        <li><strong>Eksperimen adil (Apples-to-Apples):</strong> Kedua algoritma dimulai dari <strong>koordinat awal populasi yang 100% identik</strong> (seed sama &amp; fungsi sama).</li>
-        <li><strong>Amati perbedaan karakter di layar:</strong>
-          <ul>
-            <li>Pada <em>Sphere</em>, aliran WCA dengan <code>C = 2</code> sering meluncur cepat ke pusat Laut, sementara SFLA menyapu bertahap per memeplex.</li>
-            <li>Pada <em>Rastrigin</em>, pengacakan ulang <em>Shuffle</em> SFLA dan <em>Hujan</em> WCA sama-sama efektif meloloskan diri dari jebakan lokal!</li>
-          </ul>
-        </li>
-      </ul>
-    `,
-    mount(container, { reducedMotion, registerHooks }) {
-      container.innerHTML = `
-        <div class="slide-top" style="align-items:center;">
-          <div>
-            <div class="slide-context">Slide 16 · Arena Perbandingan Berdampingan</div>
-            <h1 class="slide-heading" style="font-size:clamp(1.45rem, 2.1vw, 2.45rem);">SFLA vs WCA pada Fungsi &amp; Populasi Identik</h1>
+const {  syncCanvasSize  } = __require("render/contourRenderer.js");
+const tabKomparasi = {
+  id: 'komparasi',
+  label: 'Komparasi & Cloud VM',
+  title: 'Komparasi SFLA vs WCA & Optimasi Penjadwalan Cloud VM',
+  notes: `
+    <p><strong>Panduan Demonstrasi Tab Komparasi &amp; Cloud VM:</strong></p>
+    <ul>
+      <li>Pada <strong>Arena Head-to-Head</strong>, kedua algoritma memulai dari titik koordinat awal <code>(x_i, y_i)</code> yang persis sama sehingga perbedaan kurva konvergensi murni berasal dari operator pencarian masing-masing.</li>
+      <li>Gulir ke bagian <strong>Studi Kasus Penjadwalan Cloud VM</strong> dan klik <strong>Optimalkan Jadwal</strong> untuk menunjukkan penurunan waktu selesai maksimum (<em>Makespan</em>) dibanding metode statis <em>Round-Robin</em> pada 4 VM dengan kapasitas MIPS berbeda.</li>
+    </ul>
+  `,
+
+  mount(container, { reducedMotion, registerHooks }) {
+    container.innerHTML = `
+      <header class="tab-lead">
+        <div class="tab-lead-main">
+          <div class="tab-breadcrumb">
+            <span class="tab-breadcrumb-dot"></span>
+            <span>Evaluasi Sinkron &amp; Implementasi Komputasi Awan</span>
           </div>
+          <h1 class="tab-title">Komparasi Head-to-Head &amp; Penjadwalan Cloud VM</h1>
+          <p class="tab-desc">
+            Pengujian langsung <strong>SFLA</strong> dan <strong>WCA</strong> menggunakan koordinat populasi awal yang identik, diikuti penerapan keduanya untuk meminimalkan <em>Makespan</em> pada 16 tugas komputasi awan (<em>cloudlets</em>) di 4 Virtual Machine heterogen.
+          </p>
+        </div>
+      </header>
 
-          <div class="ctrl-bar">
-            <button type="button" class="btn btn-accent" id="cmp-btn-play">▶ Play Serentak</button>
-            <button type="button" class="btn btn-step" id="cmp-btn-step" title="Maju 1 siklus iterasi bersama (Tombol S)">⏭ +1 Iterasi</button>
-            <button type="button" class="btn" id="cmp-btn-reset" title="Reset bersama (Tombol R)">↺ Reset</button>
-
-            <label class="ctrl-field">
-              <span>Fungsi:</span>
-              <select class="ctrl-select" id="cmp-select-obj">
-                <option value="sphere">Sphere</option>
-                <option value="rastrigin" selected>Rastrigin</option>
-                <option value="ackley">Ackley</option>
-              </select>
-            </label>
-
-            <label class="ctrl-field">
-              <span>Seed:</span>
-              <input type="number" class="ctrl-input" id="cmp-seed" value="42" style="width:76px;" />
-            </label>
-
-            <button type="button" class="btn" id="cmp-rand-seed" title="Coba seed acak baru">Acak Seed</button>
+      <!-- Bagian 1: Arena Komparasi Sinkron 2D (SFLA vs WCA) -->
+      <section class="panel" data-ui>
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">Arena Head-to-Head SFLA vs WCA (Populasi Awal Identik)</h2>
+            <p class="panel-subtitle">Setiap langkah mengeksekusi 1 siklus penuh pada kedua algoritma secara bersamaan.</p>
+          </div>
+          <div style="display:flex; align-items:center; flex-wrap:wrap; gap:0.55rem;">
+            <div class="seg-group" data-ui id="cmp-obj-group">
+              <button type="button" class="seg-btn active" data-obj="rastrigin">Rastrigin</button>
+              <button type="button" class="seg-btn" data-obj="ackley">Ackley</button>
+              <button type="button" class="seg-btn" data-obj="sphere">Sphere</button>
+            </div>
+            <input type="number" class="field-input" id="cmp-inp-seed" value="42" min="1" max="99999" style="width:88px;" title="Seed Populasi Bersama" aria-label="Seed Populasi Bersama" />
+            <button type="button" class="btn btn-primary" id="cmp-btn-play">Mulai Sinkron (P)</button>
+            <button type="button" class="btn btn-gold" id="cmp-btn-step">+1 Iterasi (S)</button>
+            <button type="button" class="btn" id="cmp-btn-reset">Reset (R)</button>
           </div>
         </div>
 
-        <div style="flex:1; min-height:0; display:grid; grid-template-rows:1.25fr 0.75fr; gap:0.85rem;">
-          <div class="split-grid-equal">
-            <!-- Panel SFLA -->
-            <div class="card-panel canvas-card" style="border-color:#1f9d7a;">
-              <div class="stage-hud-overlay">
-                <div class="stage-badge" style="border-color:#1f9d7a;">
-                  <span class="stage-badge-code" style="color:#43bf9c;">SFLA</span>
-                  <span id="cmp-sfla-best" class="tabular">f = 0.0000</span>
-                </div>
-                <div class="hud-pill" id="cmp-sfla-iter">Iterasi 0</div>
-              </div>
-              <canvas id="cmp-sfla-canvas"></canvas>
-            </div>
-
-            <!-- Panel WCA -->
-            <div class="card-panel canvas-card" style="border-color:#2298c7;">
-              <div class="stage-hud-overlay">
-                <div class="stage-badge" style="border-color:#2298c7;">
-                  <span class="stage-badge-code" style="color:#53bce3;">WCA</span>
-                  <span id="cmp-wca-best" class="tabular">f = 0.0000</span>
-                </div>
-                <div class="hud-pill" id="cmp-wca-iter">Iterasi 0</div>
-              </div>
-              <canvas id="cmp-wca-canvas"></canvas>
-            </div>
+        <div class="kpi-strip" data-ui>
+          <div class="kpi-cell" data-ui>
+            <span class="kpi-label">Iterasi Bersama</span>
+            <span class="kpi-val" id="cmp-kpi-iter">0 / 35</span>
+            <span class="kpi-sub">24 agen identik di awal</span>
           </div>
-
-          <div class="card-panel canvas-card">
-            <canvas id="cmp-chart-canvas"></canvas>
+          <div class="kpi-cell" data-ui>
+            <span class="kpi-label">SFLA Terbaik f(Xg)</span>
+            <span class="kpi-val tosca" id="cmp-kpi-sfla">0.000</span>
+            <span class="kpi-sub">4 memeplex · N = 3</span>
+          </div>
+          <div class="kpi-cell" data-ui>
+            <span class="kpi-label">WCA Terbaik f(Xsea)</span>
+            <span class="kpi-val sky" id="cmp-kpi-wca">0.000</span>
+            <span class="kpi-sub">Nsr = 4 · C = 2.0</span>
+          </div>
+          <div class="kpi-cell" data-ui>
+            <span class="kpi-label">Status Keunggulan Saat Ini</span>
+            <span class="kpi-val gold" id="cmp-kpi-lead">Seimbang</span>
+            <span class="kpi-sub" id="cmp-kpi-delta">Selisih: 0.000</span>
           </div>
         </div>
-      `;
 
-      const sflaCanvas = container.querySelector('#cmp-sfla-canvas');
-      const wcaCanvas = container.querySelector('#cmp-wca-canvas');
-      const chartCanvas = container.querySelector('#cmp-chart-canvas');
-      const btnPlay = container.querySelector('#cmp-btn-play');
-      const btnStep = container.querySelector('#cmp-btn-step');
-      const btnReset = container.querySelector('#cmp-btn-reset');
-      const selObj = container.querySelector('#cmp-select-obj');
-      const inpSeed = container.querySelector('#cmp-seed');
-      const btnRandSeed = container.querySelector('#cmp-rand-seed');
+        <div class="grid-12">
+          <div class="span-6">
+            <div class="canvas-stage-compact" data-ui style="height:310px;">
+              <div class="canvas-hud" data-ui>
+                <div class="hud-status" data-ui><span class="hud-dot" style="background:#12b0a2;"></span><span>SFLA (Kolam Memeplex)</span></div>
+              </div>
+              <canvas id="cmp-canvas-sfla"></canvas>
+            </div>
+          </div>
+          <div class="span-6">
+            <div class="canvas-stage-compact" data-ui style="height:310px;">
+              <div class="canvas-hud" data-ui>
+                <div class="hud-status" data-ui><span class="hud-dot" style="background:#26aee4;"></span><span>WCA (Aliran Siklus Air)</span></div>
+              </div>
+              <canvas id="cmp-canvas-wca"></canvas>
+            </div>
+          </div>
+          <div class="span-12">
+            <div class="chart-box" data-ui style="height:190px;">
+              <canvas id="cmp-chart-canvas"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
 
-      const sflaBestEl = container.querySelector('#cmp-sfla-best');
-      const wcaBestEl = container.querySelector('#cmp-wca-best');
-      const sflaIterEl = container.querySelector('#cmp-sfla-iter');
-      const wcaIterEl = container.querySelector('#cmp-wca-iter');
+      <!-- Bagian 2: Tabel Perbandingan Arsitektural -->
+      <section class="panel" data-ui>
+        <div>
+          <h2 class="panel-title">Matriks Perbandingan Arsitektur SFLA dan WCA</h2>
+          <p class="panel-subtitle">Perbedaan mendasar struktur populasi, mekanisme eksploitasi, dan pengendalian keragaman solusi.</p>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Dimensi Evaluasi</th>
+                <th>Shuffled Frog-Leaping Algorithm (SFLA)</th>
+                <th>Water Cycle Algorithm (WCA)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Sumber Inspirasi</strong></td>
+                <td>Evolusi budaya memetik katak yang mencari batu berpakan tertinggi di kolam (Eusuff &amp; Lansey, 2003).</td>
+                <td>Siklus hidrologi gravitasi aliran sungai menuju laut serta penguapan atmosfer (Eskandar et al., 2012).</td>
+              </tr>
+              <tr>
+                <td><strong>Struktur Populasi</strong></td>
+                <td>Terbagi rata ke dalam <code>m</code> sub-populasi <strong>Memeplex</strong> via pembagian modulo bergilir.</td>
+                <td>Hierarki terpusat: 1 <strong>Laut</strong>, <code>Nsr - 1</code> <strong>Sungai</strong>, dan alokasi <strong>Aliran</strong> proporsional <code>NSn</code>.</td>
+              </tr>
+              <tr>
+                <td><strong>Agen yang Diperbarui</strong></td>
+                <td>Selektif: hanya katak terburuk <code>Xw</code> per memeplex dalam setiap sub-iterasi lokal <code>N</code>.</td>
+                <td>Serentak: seluruh aliran bergerak ke sungai/laut dan seluruh sungai bergerak ke laut tiap iterasi.</td>
+              </tr>
+              <tr>
+                <td><strong>Mekanisme Anti-Stagnasi</strong></td>
+                <td>Relokasi acak katak <code>Xw</code> saat lompatan ke <code>Xb</code> maupun <code>Xg</code> tidak memperbaiki fitness.</td>
+                <td>Penguapan ketika jarak ke Laut <code>&lt; dmax</code> diikuti presipitasi hujan baru dan penyusutan <code>dmax</code>.</td>
+              </tr>
+              <tr>
+                <td><strong>Difusi Informasi Global</strong></td>
+                <td>Periodik melalui tahap <strong>Shuffle</strong> setelah seluruh memeplex menyelesaikan <code>N</code> langkah lokal.</td>
+                <td>Kontinu melalui <strong>Pertukaran Peran</strong> seketika saat aliran mengungguli sungai atau laut.</td>
+              </tr>
+              <tr>
+                <td><strong>Karakteristik pada Cloud</strong></td>
+                <td>Tangguh menjaga variasi jadwal alternatif pada beban kerja heterogen berdimensi diskrit-kombinatorial.</td>
+                <td>Konvergensi awal sangat cepat menuju jadwal ber-Makespan rendah dengan sedikit parameter sensitif.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
 
-      const sflaRenderer = new SFLARenderer();
-      const wcaRenderer = new WCARenderer();
-
-      let currentObj = getObjective(selObj.value);
-      let sflaEngine = null;
-      let wcaEngine = null;
-
-      function createSharedEngines() {
-        currentObj = getObjective(selObj.value);
-        const seedVal = Number(inpSeed.value) || 42;
-        const posRng = createRng(seedVal);
-        const popSize = 24;
-        const sharedPositions = Array.from({ length: popSize }, () => ({
-          x: posRng.range(currentObj.min, currentObj.max),
-          y: posRng.range(currentObj.min, currentObj.max)
-        }));
-
-        sflaEngine = new SFLAEngine({
-          objective: currentObj,
-          populationSize: popSize,
-          memeplexCount: 4,
-          localIterations: 3,
-          maxStep: 3.2,
-          maxIterations: 40,
-          seed: seedVal,
-          initialPositions: sharedPositions
-        });
-
-        wcaEngine = new WCAEngine({
-          objective: currentObj,
-          populationSize: popSize,
-          nsr: 4,
-          dmax: 0.45,
-          flowConstant: 2.0,
-          maxIterations: 40,
-          seed: seedVal,
-          initialPositions: sharedPositions
-        });
-      }
-
-      createSharedEngines();
-
-      function updateUI() {
-        const sSt = sflaEngine.getState();
-        const wSt = wcaEngine.getState();
-
-        const sf = sSt.bestFrog.fitness;
-        const wf = wSt.bestSea.fitness;
-        sflaBestEl.textContent = `f = ${sf < 0.0001 ? sf.toExponential(2) : sf.toFixed(4)}`;
-        wcaBestEl.textContent = `f = ${wf < 0.0001 ? wf.toExponential(2) : wf.toFixed(4)}`;
-        sflaIterEl.textContent = `Siklus ${sSt.iteration}/${sSt.maxIterations}`;
-        wcaIterEl.textContent = `Iterasi ${wSt.iteration}/${wSt.maxIterations}`;
-
-        renderConvergenceChart(
-          chartCanvas,
-          [
-            { label: 'SFLA', color: '#34d399', data: sSt.history },
-            { label: 'WCA', color: '#38bdf8', data: wSt.history }
-          ],
-          {
-            maxIterations: 40,
-            title: `Kurva Konvergensi pada Fungsi ${currentObj.name} (Populasi = 24, Seed = ${inpSeed.value})`
-          }
-        );
-      }
-
-      const runner = new SimulationRunner({
-        stepsPerSecond: 3.0,
-        reducedMotion,
-        onStep: () => {
-          const sSt = sflaEngine.stepFullIteration();
-          const wSt = wcaEngine.stepFullIteration();
-          updateUI();
-          return sSt.phase === 'DONE' && wSt.phase === 'DONE';
-        },
-        onRender: (alpha, ts) => {
-          sflaRenderer.render(sflaCanvas, sflaEngine.getState(), currentObj, {
-            alpha,
-            showOptimum: true,
-            showTrails: true,
-            compact: true
-          });
-          wcaRenderer.render(wcaCanvas, wcaEngine.getState(), currentObj, {
-            alpha,
-            timestamp: ts,
-            showOptimum: true,
-            showTrails: true,
-            compact: true
-          });
-        }
-      });
-
-      runner.onPlayStateChange = (playing) => {
-        btnPlay.textContent = playing ? '⏸ Pause' : '▶ Play Serentak';
-      };
-
-      function resetBoth() {
-        createSharedEngines();
-        runner.notifyReset();
-        updateUI();
-      }
-
-      btnPlay.addEventListener('click', () => {
-        if (sflaEngine.getState().phase === 'DONE') resetBoth();
-        runner.togglePlay();
-      });
-      btnStep.addEventListener('click', () => runner.stepOnce());
-      btnReset.addEventListener('click', () => resetBoth());
-      selObj.addEventListener('change', () => resetBoth());
-      inpSeed.addEventListener('change', () => resetBoth());
-      btnRandSeed.addEventListener('click', () => {
-        inpSeed.value = String(Math.floor(Math.random() * 900) + 100);
-        resetBoth();
-      });
-
-      const onResize = () => updateUI();
-      window.addEventListener('resize', onResize);
-
-      registerHooks({
-        togglePlay: () => btnPlay.click(),
-        step: () => btnStep.click(),
-        reset: () => btnReset.click()
-      });
-
-      updateUI();
-      runner.startLoop();
-
-      return () => {
-        window.removeEventListener('resize', onResize);
-        runner.destroy();
-      };
-    }
-  },
-
-  // =========================================================================
-  // SLIDE 17: STUDI KASUS KOMPUTASI AWAN — PENJADWALAN TUGAS KE VM (Bagian 9)
-  // =========================================================================
-  {
-    id: 'cloud-case',
-    shortTitle: 'Cloud VM Scheduling',
-    title: 'Konteks Komputasi Awan: Penjadwalan Tugas ke VM',
-    theme: 'cloud',
-    notes: `
-      <ul>
-        <li><strong>Relevansi langsung dengan mata kuliah:</strong> Menjadwalkan 16 tugas (<em>cloudlets</em>) ke 4 Mesin Virtual (VM) yang kapasitas MIPS-nya berbeda-beda adalah masalah NP-Hard!</li>
-        <li><strong>Pemetaan kontinu → diskrit:</strong> Setiap katak/tetesan adalah array sepanjang 16 angka kontinu <code>[0, 4)</code>. Nilai kontinu dibulatkan ke bawah <code>floor(x_i)</code> menjadi indeks VM tujuan (0, 1, 2, atau 3).</li>
-        <li>Klik tombol <strong>▶ Jalankan Optimasi</strong>: tunjukkan bagaimana beban VM yang tadinya timpang pada Round-Robin menjadi rata seimbang dan waktu selesai terakhir (<em>Makespan</em>) turun tajam!</li>
-      </ul>
-    `,
-    mount(container, { reducedMotion, registerHooks }) {
-      container.innerHTML = `
-        <div class="slide-top" style="align-items:center;">
+      <!-- Bagian 3: Studi Kasus Komputasi Awan (16 Cloudlets -> 4 VM Heterogen) -->
+      <section class="panel" data-ui>
+        <div class="panel-header">
           <div>
-            <div class="slide-context">Slide 17 · Studi Kasus Komputasi Awan</div>
-            <h1 class="slide-heading" style="font-size:clamp(1.45rem, 2.15vw, 2.5rem);">Penjadwalan 16 Tugas ke 4 VM (Minimasi Makespan)</h1>
-            <p class="slide-keyline" style="font-size:var(--fs-ui);">
-              Pemetaan kontinu ke diskrit: <code>VM_tugas[i] = ⌊X[i]⌋ ∈ {0, 1, 2, 3}</code> &nbsp;·&nbsp; Satu agen = satu jadwal lengkap.
+            <h2 class="panel-title">Studi Kasus SOKA: Penjadwalan 16 Cloudlet pada 4 Virtual Machine Heterogen</h2>
+            <p class="panel-subtitle">
+              Memetakan vektor kontinu <code>X &isin; [0, 4)^16</code> menjadi penugasan VM diskrit <code>vmIdx = floor(X_i)</code> guna meminimalkan waktu selesai klaster (<em>Makespan</em>).
             </p>
           </div>
-
-          <div class="ctrl-bar">
-            <button type="button" class="btn btn-accent" id="cloud-btn-run">▶ Jalankan</button>
-            <button type="button" class="btn btn-step" id="cloud-btn-step">⏭ Step</button>
-            <button type="button" class="btn" id="cloud-btn-reset">↺ Beban Baru</button>
+          <div style="display:flex; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+            <select class="field-input" id="cloud-sel-seed" aria-label="Pilih skenario beban kerja">
+              <option value="42">Beban Kerja Klaster A (Seed 42)</option>
+              <option value="108">Beban Kerja Klaster B (Seed 108)</option>
+              <option value="2026">Beban Kerja Puncak C (Seed 2026)</option>
+            </select>
+            <button type="button" class="btn btn-primary" id="cloud-btn-run">Optimalkan Jadwal</button>
+            <button type="button" class="btn btn-gold" id="cloud-btn-step">+1 Iterasi</button>
+            <button type="button" class="btn" id="cloud-btn-reset">Reset</button>
           </div>
         </div>
 
-        <div class="split-grid">
-          <!-- Visual Bar Beban per VM -->
-          <div class="card-panel" style="padding:1rem 1.2rem; gap:0.65rem;">
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
-              <strong style="font-size:var(--fs-ui); color:var(--theme-primary);">Distribusi Beban Kerja Tiap VM (Detik)</strong>
-              <div style="display:flex; gap:0.45rem;" id="cloud-view-tabs">
-                <button type="button" class="btn" data-algo="rr" style="padding:0.3rem 0.7rem; font-size:var(--fs-small);">Round-Robin</button>
-                <button type="button" class="btn btn-accent" data-algo="sfla" style="padding:0.3rem 0.7rem; font-size:var(--fs-small);">Jadwal SFLA</button>
-                <button type="button" class="btn" data-algo="wca" style="padding:0.3rem 0.7rem; font-size:var(--fs-small);">Jadwal WCA</button>
-              </div>
-            </div>
+        <div class="kpi-strip" data-ui>
+          <div class="kpi-cell" data-ui>
+            <span class="kpi-label">Baseline Round-Robin</span>
+            <span class="kpi-val danger" id="cloud-kpi-rr">0.00 dtk</span>
+            <span class="kpi-sub">Tanpa kesadaran kapasitas MIPS</span>
+          </div>
+          <div class="kpi-cell" data-ui>
+            <span class="kpi-label">Makespan Jadwal SFLA</span>
+            <span class="kpi-val tosca" id="cloud-kpi-sfla">0.00 dtk</span>
+            <span class="kpi-sub" id="cloud-kpi-sfla-gain">Hemat 0.0% vs Round-Robin</span>
+          </div>
+          <div class="kpi-cell" data-ui>
+            <span class="kpi-label">Makespan Jadwal WCA</span>
+            <span class="kpi-val sky" id="cloud-kpi-wca">0.00 dtk</span>
+            <span class="kpi-sub" id="cloud-kpi-wca-gain">Hemat 0.0% vs Round-Robin</span>
+          </div>
+          <div class="kpi-cell" data-ui>
+            <span class="kpi-label">Progres Optimasi VM</span>
+            <span class="kpi-val gold" id="cloud-kpi-iter">0 / 35</span>
+            <span class="kpi-sub">16 tugas (140..620 MI)</span>
+          </div>
+        </div>
 
-            <div class="canvas-card" style="flex:1; border-radius:10px; border:1px solid var(--border-subtle);">
+        <div class="grid-12">
+          <div class="span-7">
+            <div class="canvas-stage-compact" data-ui style="height:315px;">
               <canvas id="cloud-bars-canvas"></canvas>
             </div>
           </div>
-
-          <!-- Metrik Makespan & Grafik Konvergensi -->
-          <div style="display:flex; flex-direction:column; gap:0.85rem; min-height:0;">
-            <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:0.65rem;">
-              <div class="card-panel" style="padding:0.75rem 0.9rem;">
-                <div style="font-size:var(--fs-small); color:var(--text-muted); font-weight:700;">Round-Robin</div>
-                <div id="cloud-val-rr" class="tabular" style="font-size:var(--fs-h2); font-weight:800; color:#d95b5b;">0.0s</div>
-              </div>
-              <div class="card-panel" style="padding:0.75rem 0.9rem; border-color:#1f9d7a;">
-                <div style="font-size:var(--fs-small); color:#43bf9c; font-weight:700;">SFLA Terbaik</div>
-                <div id="cloud-val-sfla" class="tabular" style="font-size:var(--fs-h2); font-weight:800; color:#43bf9c;">0.0s</div>
-              </div>
-              <div class="card-panel" style="padding:0.75rem 0.9rem; border-color:#2298c7;">
-                <div style="font-size:var(--fs-small); color:#53bce3; font-weight:700;">WCA Terbaik</div>
-                <div id="cloud-val-wca" class="tabular" style="font-size:var(--fs-h2); font-weight:800; color:#53bce3;">0.0s</div>
-              </div>
-            </div>
-
-            <div class="card-panel canvas-card" style="flex:1; min-height:175px;">
+          <div class="span-5" style="display:flex; flex-direction:column; gap:0.8rem;">
+            <div class="chart-box" data-ui style="height:198px;">
               <canvas id="cloud-chart-canvas"></canvas>
             </div>
-
-            <div class="formula-box" id="cloud-summary-box" style="font-size:var(--fs-small);">
-              Tekan <strong>Jalankan</strong> untuk menyeimbangkan penugasan 16 cloudlet sesuai kecepatan MIPS tiap VM.
+            <div class="formula-block" data-ui>
+              <code>Makespan = max_{j=1..4} ( sum_{i in VM_j} MI_i / MIPS_j )</code>
+              <div class="formula-note">
+                VM-1 (85 MIPS), VM-2 (115 MIPS), VM-3 (145 MIPS), VM-4 (175 MIPS). Round-Robin membebani VM lambat secara buta, sedangkan SFLA &amp; WCA menyeimbangkan durasi selesai keempat VM.
+              </div>
             </div>
           </div>
         </div>
-      `;
+      </section>
 
-      const barsCanvas = container.querySelector('#cloud-bars-canvas');
-      const chartCanvas = container.querySelector('#cloud-chart-canvas');
-      const btnRun = container.querySelector('#cloud-btn-run');
-      const btnStep = container.querySelector('#cloud-btn-step');
-      const btnReset = container.querySelector('#cloud-btn-reset');
-
-      const valRR = container.querySelector('#cloud-val-rr');
-      const valSfla = container.querySelector('#cloud-val-sfla');
-      const valWca = container.querySelector('#cloud-val-wca');
-      const summaryBox = container.querySelector('#cloud-summary-box');
-
-      let seedCounter = 2026;
-      let activeView = 'sfla';
-      let optimizer = new CloudScheduleOptimizer({
-        tasks: generateCloudTasks(16, seedCounter),
-        maxIterations: 35,
-        seed: seedCounter
-      });
-
-      const TASK_PALETTE = [
-        '#53bce3', '#43bf9c', '#d8a33a', '#e07a9a',
-        '#48b8d0', '#e08544', '#27a89a', '#9ccf4e'
-      ];
-
-      function drawVMBars() {
-        const { ctx, width, height } = syncCanvasSize(barsCanvas);
-        ctx.clearRect(0, 0, width, height);
-
-        const st = optimizer.getState();
-        const sched =
-          activeView === 'rr'
-            ? st.baselineRR
-            : activeView === 'wca'
-            ? st.bestWca.eval
-            : st.bestSfla.eval;
-
-        const maxScaleSec = Math.max(st.baselineRR.makespan * 1.15, 16);
-        const padLeft = 52;
-        const padRight = 24;
-        const padTop = 34;
-        const padBottom = 56;
-        const plotW = Math.max(40, width - padLeft - padRight);
-        const plotH = Math.max(40, height - padTop - padBottom);
-
-        // Grid sumbu waktu (detik)
-        ctx.strokeStyle = 'rgba(148, 163, 184, 0.14)';
-        ctx.lineWidth = 1;
-        ctx.font = '700 12px "Ubuntu Mono", monospace';
-        ctx.fillStyle = '#94a3b8';
-        ctx.textAlign = 'right';
-
-        for (let g = 0; g <= 4; g++) {
-          const sec = (g / 4) * maxScaleSec;
-          const py = padTop + plotH - (g / 4) * plotH;
-          ctx.beginPath();
-          ctx.moveTo(padLeft, py);
-          ctx.lineTo(padLeft + plotW, py);
-          ctx.stroke();
-          ctx.fillText(`${sec.toFixed(0)}s`, padLeft - 8, py + 4);
-        }
-
-        // Gambar kolom per VM beserta tumpukan blok tugas di dalamnya
-        const vmCount = st.vms.length;
-        const slotW = plotW / vmCount;
-        const barW = Math.min(92, slotW * 0.56);
-
-        st.vms.forEach((vm, idx) => {
-          const bx = padLeft + idx * slotW + (slotW - barW) / 2;
-          let curBottom = padTop + plotH;
-
-          for (const t of sched.vmTasks[idx]) {
-            const blockH = (t.execSec / maxScaleSec) * plotH;
-            const by = curBottom - blockH;
-
-            ctx.fillStyle = TASK_PALETTE[(t.id - 1) % TASK_PALETTE.length];
-            ctx.strokeStyle = '#071320';
-            ctx.lineWidth = 1.6;
-            ctx.beginPath();
-            ctx.roundRect(bx, by, barW, Math.max(2, blockH - 1), 4);
-            ctx.fill();
-            ctx.stroke();
-
-            if (blockH >= 15) {
-              ctx.font = '700 11px "Ubuntu Mono", monospace';
-              ctx.fillStyle = '#04111d';
-              ctx.textAlign = 'center';
-              ctx.fillText(t.name, bx + barW / 2, by + blockH / 2 + 4);
-            }
-            curBottom = by;
-          }
-
-          // Label total waktu VM di atas bar
-          ctx.font = '800 13px "Ubuntu Mono", monospace';
-          ctx.fillStyle = '#f8fafc';
-          ctx.textAlign = 'center';
-          ctx.fillText(`${sched.vmLoads[idx].toFixed(1)}s`, bx + barW / 2, curBottom - 7);
-
-          // Nama VM & kecepatan MIPS di bawah sumbu
-          ctx.font = '700 13px "Plus Jakarta Sans", sans-serif';
-          ctx.fillStyle = '#e2e8f0';
-          ctx.fillText(`VM-${idx + 1}`, bx + barW / 2, padTop + plotH + 20);
-          ctx.font = '400 11px "Ubuntu Mono", monospace';
-          ctx.fillStyle = '#94a3b8';
-          ctx.fillText(`${vm.mips} MIPS`, bx + barW / 2, padTop + plotH + 37);
-        });
-
-        // Garis horizontal penanda Makespan saat ini
-        const mkY = padTop + plotH - (sched.makespan / maxScaleSec) * plotH;
-        ctx.save();
-        ctx.strokeStyle = '#fde047';
-        ctx.lineWidth = 2.4;
-        ctx.setLineDash([7, 5]);
-        ctx.beginPath();
-        ctx.moveTo(padLeft, mkY);
-        ctx.lineTo(padLeft + plotW, mkY);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        ctx.font = '800 12px "Ubuntu Mono", monospace';
-        ctx.fillStyle = '#fde047';
-        ctx.textAlign = 'right';
-        ctx.fillText(`Makespan = ${sched.makespan.toFixed(2)}s`, padLeft + plotW - 4, Math.max(18, mkY - 7));
-        ctx.restore();
-      }
-
-      function refreshAll() {
-        const st = optimizer.getState();
-        valRR.textContent = `${st.baselineRR.makespan.toFixed(2)}s`;
-        valSfla.textContent = `${st.bestSfla.eval.makespan.toFixed(2)}s`;
-        valWca.textContent = `${st.bestWca.eval.makespan.toFixed(2)}s`;
-
-        const bestOverall = Math.min(st.bestSfla.eval.makespan, st.bestWca.eval.makespan);
-        const savedPct = ((st.baselineRR.makespan - bestOverall) / st.baselineRR.makespan) * 100;
-        summaryBox.innerHTML =
-          st.iteration === 0
-            ? `Iterasi 0/${st.maxIterations}: Klik <strong>▶ Jalankan</strong> untuk melihat beban VM diseimbangkan secara otomatis.`
-            : `Iterasi <strong>${st.iteration}/${st.maxIterations}</strong>: Penghematan waktu selesai terakhir dibanding Round-Robin sebesar <strong style="color:#43bf9c;">−${Math.max(0, savedPct).toFixed(1)}%</strong>.`;
-
-        drawVMBars();
-        renderConvergenceChart(
-          chartCanvas,
-          [
-            { label: 'SFLA', color: '#34d399', data: st.historySfla },
-            { label: 'WCA', color: '#38bdf8', data: st.historyWca }
-          ],
-          {
-            maxIterations: st.maxIterations,
-            zeroBaseline: false,
-            title: 'Penurunan Makespan (Detik) Seiring Iterasi'
-          }
-        );
-      }
-
-      const runner = new SimulationRunner({
-        stepsPerSecond: 4.5,
-        reducedMotion,
-        onStep: () => {
-          const st = optimizer.step();
-          refreshAll();
-          return st.done;
-        },
-        onRender: () => {}
-      });
-
-      runner.onPlayStateChange = (playing) => {
-        btnRun.textContent = playing ? '⏸ Pause' : '▶ Jalankan';
-      };
-
-      container.querySelectorAll('#cloud-view-tabs .btn').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          activeView = btn.dataset.algo;
-          container.querySelectorAll('#cloud-view-tabs .btn').forEach((b) => {
-            b.classList.toggle('btn-accent', b === btn);
-          });
-          drawVMBars();
-        });
-      });
-
-      btnRun.addEventListener('click', () => {
-        if (optimizer.getState().done) {
-          optimizer.reset();
-        }
-        runner.togglePlay();
-      });
-
-      btnStep.addEventListener('click', () => runner.stepOnce());
-
-      btnReset.addEventListener('click', () => {
-        runner.pause();
-        seedCounter += 7;
-        optimizer = new CloudScheduleOptimizer({
-          tasks: generateCloudTasks(16, seedCounter),
-          maxIterations: 35,
-          seed: seedCounter
-        });
-        refreshAll();
-      });
-
-      const onResize = () => refreshAll();
-      window.addEventListener('resize', onResize);
-
-      registerHooks({
-        togglePlay: () => btnRun.click(),
-        step: () => btnStep.click(),
-        reset: () => btnReset.click()
-      });
-
-      refreshAll();
-      runner.startLoop();
-
-      return () => {
-        window.removeEventListener('resize', onResize);
-        runner.destroy();
-      };
-    }
-  },
-
-  // =========================================================================
-  // SLIDE 18: KESIMPULAN & REFERENSI
-  // =========================================================================
-  {
-    id: 'conclusion',
-    shortTitle: 'Kesimpulan',
-    title: 'Kesimpulan, Perbandingan Kunci & Referensi',
-    theme: 'intro',
-    notes: `
-      <ul>
-        <li><strong>Ringkasan penutup (1 menit):</strong>
-          <ul>
-            <li><strong>SFLA</strong> unggul dalam pertukaran budaya terstruktur lewat komunitas <em>memeplex</em> dan <em>shuffle</em> global.</li>
-            <li><strong>WCA</strong> unggul dalam hierarki intensitas aliran proporsional dan kontrol radius penguapan <code>dmax</code> yang adaptif dari eksplorasi menuju eksploitasi.</li>
-            <li>Keduanya mampu menekan <em>makespan</em> penjadwalan komputasi awan secara signifikan tanpa harus menguji seluruh kombinasi eksponensial.</li>
+      <!-- Bagian 4: Sintesis Akademik & Daftar Pustaka -->
+      <div class="grid-12">
+        <div class="span-6 panel" data-ui>
+          <h2 class="panel-title">Kesimpulan Rekayasa Optimasi Awan</h2>
+          <ul style="margin:0; padding-left:1.2rem; color:var(--ink-muted); font-size:0.88rem; display:flex; flex-direction:column; gap:0.5rem;">
+            <li><strong>Keunggulan SFLA:</strong> Partisi independen dalam beberapa memeplex menjaga keragaman solusi alternatif lebih lama, efektif saat lanskap penjadwalan memiliki banyak konfigurasi berbiaya hampir setara.</li>
+            <li><strong>Keunggulan WCA:</strong> Pembagian debit aliran proporsional <code>NSn</code> dan penyusutan radius penguapan <code>dmax</code> memberikan akselerasi konvergensi awal yang sangat tajam dengan struktur kode ringkas.</li>
+            <li><strong>Dampak pada Cloud SLA:</strong> Baik SFLA maupun WCA secara konsisten memangkas <em>Makespan</em> penjadwalan klaster heterogen secara signifikan dibanding heuristik statis <em>Round-Robin</em>.</li>
           </ul>
-        </li>
-        <li>Gunakan tombol pintas di bagian bawah layar apabila dosen atau audiens meminta demo ulang pada salah satu modul saat sesi tanya jawab!</li>
-      </ul>
-    `,
-    mount(container, { deck }) {
-      container.innerHTML = `
-        <div class="slide-top">
-          <div>
-            <div class="slide-context">Slide 18 · Penutup &amp; Sintesis</div>
-            <h1 class="slide-heading">Kesimpulan: SFLA vs WCA untuk Optimasi Awan</h1>
-          </div>
         </div>
 
-        <div style="flex:1; display:flex; flex-direction:column; justify-content:space-between; gap:0.95rem; min-height:0;">
-          <div class="split-grid-equal" style="flex:1;">
-            <!-- Kartu Ringkasan SFLA -->
-            <div class="card-panel" style="border-color:#1f9d7a; justify-content:space-between;">
-              <div style="display:flex; flex-direction:column; gap:0.65rem;">
-                <div style="display:flex; align-items:center; justify-content:space-between;">
-                  <strong style="font-size:var(--fs-h2); color:#43bf9c;">SFLA (Kolam Teratai)</strong>
-                  <span class="tabular" style="font-size:var(--fs-small); font-weight:700; color:#9cead1;">Eusuff &amp; Lansey (2003)</span>
-                </div>
-                <div style="font-size:var(--fs-ui); color:var(--text-secondary);">
-                  <strong>Eksploitasi:</strong> Lompatan terarah katak terburuk ke <code>Xb</code> lalu <code>Xg</code> di tiap submemeplex.<br/>
-                  <strong>Eksplorasi:</strong> Pengacakan ulang (<em>Shuffle</em>) seluruh memeplex + katak sensor acak.
-                </div>
-                <div style="padding:0.65rem 0.9rem; border-radius:8px; background:#0d2922; border-left:3px solid #1f9d7a; font-size:var(--fs-small); color:#d1fae5;">
-                  <strong>+ Kelebihan:</strong> Pencarian multi-kelompok mencegah dominasi tunggal terlalu dini.<br/>
-                  <strong>− Catatan:</strong> Lebih banyak parameter komunitas (<code>m</code>, <code>N</code>, <code>Dmax</code>) yang perlu disetel.
-                </div>
+        <div class="span-6 panel" data-ui>
+          <h2 class="panel-title">Referensi Ilmiah Utama</h2>
+          <div style="display:flex; flex-direction:column; gap:0.65rem; font-size:0.86rem; color:var(--ink-muted);">
+            <div class="panel-navy" data-ui>
+              <strong style="color:var(--ink);">Eusuff, M. M., &amp; Lansey, K. E. (2003)</strong>
+              <div style="margin-top:0.2rem;">
+                Optimization of water distribution network design using the shuffled frog leaping algorithm. <em>Journal of Water Resources Planning and Management</em>, 129(3), 210–225.
               </div>
-              <button type="button" class="btn" id="jump-back-sfla">Buka Kembali Simulasi SFLA →</button>
             </div>
-
-            <!-- Kartu Ringkasan WCA -->
-            <div class="card-panel" style="border-color:#2298c7; justify-content:space-between;">
-              <div style="display:flex; flex-direction:column; gap:0.65rem;">
-                <div style="display:flex; align-items:center; justify-content:space-between;">
-                  <strong style="font-size:var(--fs-h2); color:#53bce3;">WCA (Siklus Air)</strong>
-                  <span class="tabular" style="font-size:var(--fs-small); font-weight:700; color:#baeaff;">Eskandar dkk. (2012)</span>
-                </div>
-                <div style="font-size:var(--fs-ui); color:var(--text-secondary);">
-                  <strong>Eksploitasi:</strong> Aliran proporsional menuju Sungai &amp; Laut + pertukaran peran instan.<br/>
-                  <strong>Eksplorasi:</strong> Penguapan saat jarak <code>&lt; dmax</code> diikuti proses turun hujan baru.
-                </div>
-                <div style="padding:0.65rem 0.9rem; border-radius:8px; background:#0d2436; border-left:3px solid #2298c7; font-size:var(--fs-small); color:#e0f2fe;">
-                  <strong>+ Kelebihan:</strong> Konvergensi cepat &amp; transisi otomatis lewat penyusutan <code>dmax</code>.<br/>
-                  <strong>− Catatan:</strong> Sensitif terhadap pemilihan <code>Nsr</code> dan nilai awal <code>dmax</code>.
-                </div>
+            <div class="panel-navy" data-ui>
+              <strong style="color:var(--ink);">Eskandar, H., Sadollah, A., Bahreininejad, A., &amp; Hamdi, M. (2012)</strong>
+              <div style="margin-top:0.2rem;">
+                Water cycle algorithm – A novel metaheuristic optimization method for solving constrained engineering optimization problems. <em>Computers &amp; Structures</em>, 110–111, 151–166.
               </div>
-              <button type="button" class="btn" id="jump-back-wca">Buka Kembali Simulasi WCA →</button>
-            </div>
-          </div>
-
-          <!-- Kotak Referensi & Navigasi Cepat Tanya-Jawab -->
-          <div class="card-panel" style="padding:0.85rem 1.25rem; flex-direction:row; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
-            <div style="font-size:var(--fs-small); color:var(--text-secondary); max-width:74ch;">
-              <strong style="color:var(--gold-crown);">Referensi Utama:</strong><br/>
-              1. Eusuff, M. M., &amp; Lansey, K. E. (2003). <em>Optimization of water distribution network design using the shuffled frog leaping algorithm.</em> J. Water Resour. Plan. Manag.<br/>
-              2. Eskandar, H., Sadollah, A., Bahreininejad, A., &amp; Hamdi, M. (2012). <em>Water cycle algorithm: A novel metaheuristic optimization method...</em> Computers &amp; Structures.
-            </div>
-
-            <div style="display:flex; gap:0.55rem; flex-wrap:wrap;">
-              <button type="button" class="btn" id="jump-back-cmp">Arena SFLA vs WCA</button>
-              <button type="button" class="btn" id="jump-back-cloud">Demo Cloud VM</button>
-              <button type="button" class="btn btn-accent" id="jump-back-home">↺ Ke Slide 1</button>
             </div>
           </div>
         </div>
-      `;
+      </div>
+    `;
 
-      container.querySelector('#jump-back-sfla').addEventListener('click', () => deck.goTo(8));
-      container.querySelector('#jump-back-wca').addEventListener('click', () => deck.goTo(14));
-      container.querySelector('#jump-back-cmp').addEventListener('click', () => deck.goTo(15));
-      container.querySelector('#jump-back-cloud').addEventListener('click', () => deck.goTo(16));
-      container.querySelector('#jump-back-home').addEventListener('click', () => deck.goTo(0));
+    // =========================================================================
+    // 1. Arena Head-to-Head Sinkron SFLA vs WCA
+    // =========================================================================
+    const cmpCanvasSfla = container.querySelector('#cmp-canvas-sfla');
+    const cmpCanvasWca = container.querySelector('#cmp-canvas-wca');
+    const cmpChartCanvas = container.querySelector('#cmp-chart-canvas');
+    const cmpBtnPlay = container.querySelector('#cmp-btn-play');
+
+    let cmpObj = getObjective('rastrigin');
+    const sflaRenderer = new SFLARenderer();
+    const wcaRenderer = new WCARenderer();
+    const CMP_POP = 24;
+    const CMP_MAX_ITER = 35;
+
+    function buildSharedPositions(seed, obj) {
+      const rng = createRng(seed);
+      return Array.from({ length: CMP_POP }, () => ({
+        x: rng.range(obj.min, obj.max),
+        y: rng.range(obj.min, obj.max)
+      }));
     }
-  }
-];
 
-  exports.outroSlides = outroSlides;
+    let cmpSeed = 42;
+    let sharedPos = buildSharedPositions(cmpSeed, cmpObj);
+
+    const cmpSfla = new SFLAEngine({
+      objective: cmpObj,
+      populationSize: CMP_POP,
+      memeplexCount: 4,
+      localIterations: 3,
+      maxStep: 3.2,
+      maxIterations: CMP_MAX_ITER,
+      seed: cmpSeed,
+      initialPositions: sharedPos
+    });
+
+    const cmpWca = new WCAEngine({
+      objective: cmpObj,
+      populationSize: CMP_POP,
+      nsr: 4,
+      dmax: 0.45,
+      flowConstant: 2.0,
+      maxIterations: CMP_MAX_ITER,
+      seed: cmpSeed,
+      initialPositions: sharedPos
+    });
+
+    function updateCmpTelemetry() {
+      const stS = cmpSfla.getState();
+      const stW = cmpWca.getState();
+
+      const iterEl = container.querySelector('#cmp-kpi-iter');
+      const sflaEl = container.querySelector('#cmp-kpi-sfla');
+      const wcaEl = container.querySelector('#cmp-kpi-wca');
+      const leadEl = container.querySelector('#cmp-kpi-lead');
+      const deltaEl = container.querySelector('#cmp-kpi-delta');
+
+      const fS = stS.bestFrog ? stS.bestFrog.fitness : 0;
+      const fW = stW.bestSea ? stW.bestSea.fitness : 0;
+      const diff = Math.abs(fS - fW);
+
+      if (iterEl) iterEl.textContent = `${Math.max(stS.iteration, stW.iteration)} / ${CMP_MAX_ITER}`;
+      if (sflaEl) sflaEl.textContent = fS < 0.001 && fS > 0 ? fS.toExponential(2) : fS.toFixed(4);
+      if (wcaEl) wcaEl.textContent = fW < 0.001 && fW > 0 ? fW.toExponential(2) : fW.toFixed(4);
+
+      if (leadEl) {
+        if (diff < 1e-6) leadEl.textContent = 'Identik';
+        else if (fS < fW) leadEl.textContent = 'SFLA Unggul';
+        else leadEl.textContent = 'WCA Unggul';
+      }
+      if (deltaEl) {
+        deltaEl.textContent = `Selisih: ${diff < 0.001 && diff > 0 ? diff.toExponential(2) : diff.toFixed(4)}`;
+      }
+
+      renderConvergenceChart(
+        cmpChartCanvas,
+        [
+          { label: 'SFLA', color: '#12b0a2', data: stS.history },
+          { label: 'WCA', color: '#26aee4', data: stW.history }
+        ],
+        {
+          title: 'Perbandingan Kurva Konvergensi per Iterasi',
+          maxIterations: CMP_MAX_ITER
+        }
+      );
+    }
+
+    const cmpRunner = new SimulationRunner({
+      stepsPerSecond: 3.0,
+      reducedMotion,
+      onStep: () => {
+        const s1 = cmpSfla.stepFullIteration();
+        const s2 = cmpWca.stepFullIteration();
+        updateCmpTelemetry();
+        return s1.phase === 'DONE' && s2.phase === 'DONE';
+      },
+      onRender: (alpha, now) => {
+        sflaRenderer.render(cmpCanvasSfla, cmpSfla.getState(), cmpObj, {
+          alpha,
+          compact: true,
+          showTrails: true,
+          showOptimum: true
+        });
+        wcaRenderer.render(cmpCanvasWca, cmpWca.getState(), cmpObj, {
+          alpha,
+          timestamp: now,
+          compact: true,
+          showTrails: true,
+          showOptimum: true
+        });
+      }
+    });
+
+    cmpRunner.onPlayStateChange = (playing) => {
+      if (cmpBtnPlay) cmpBtnPlay.textContent = playing ? 'Jeda Sinkron (P)' : 'Mulai Sinkron (P)';
+    };
+
+    function resetCmpArena() {
+      cmpRunner.pause();
+      cmpSeed = Number(container.querySelector('#cmp-inp-seed')?.value || 42);
+      sharedPos = buildSharedPositions(cmpSeed, cmpObj);
+      cmpSfla.configure({
+        objective: cmpObj,
+        populationSize: CMP_POP,
+        memeplexCount: 4,
+        localIterations: 3,
+        maxStep: 3.2,
+        maxIterations: CMP_MAX_ITER,
+        seed: cmpSeed,
+        initialPositions: sharedPos
+      });
+      cmpWca.configure({
+        objective: cmpObj,
+        populationSize: CMP_POP,
+        nsr: 4,
+        dmax: 0.45,
+        flowConstant: 2.0,
+        maxIterations: CMP_MAX_ITER,
+        seed: cmpSeed,
+        initialPositions: sharedPos
+      });
+      updateCmpTelemetry();
+      cmpRunner.notifyReset();
+    }
+
+    cmpBtnPlay?.addEventListener('click', () => cmpRunner.togglePlay());
+    container.querySelector('#cmp-btn-step')?.addEventListener('click', () => cmpRunner.stepOnce());
+    container.querySelector('#cmp-btn-reset')?.addEventListener('click', () => resetCmpArena());
+    container.querySelector('#cmp-inp-seed')?.addEventListener('change', () => resetCmpArena());
+
+    const cmpObjBtns = container.querySelectorAll('#cmp-obj-group .seg-btn');
+    cmpObjBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        cmpObjBtns.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        cmpObj = getObjective(btn.dataset.obj);
+        resetCmpArena();
+      });
+    });
+
+    // =========================================================================
+    // 2. Studi Kasus Komputasi Awan (Cloud VM Makespan Optimizer)
+    // =========================================================================
+    const cloudBarsCanvas = container.querySelector('#cloud-bars-canvas');
+    const cloudChartCanvas = container.querySelector('#cloud-chart-canvas');
+    const cloudBtnRun = container.querySelector('#cloud-btn-run');
+    const cloudSelSeed = container.querySelector('#cloud-sel-seed');
+
+    let cloudSeed = 42;
+    let cloudOpt = new CloudScheduleOptimizer({
+      tasks: generateCloudTasks(16, cloudSeed),
+      vms: DEFAULT_VMS,
+      populationSize: 28,
+      maxIterations: 35,
+      seed: cloudSeed
+    });
+    let cloudTimer = null;
+
+    function renderCloudBars(state) {
+      if (!cloudBarsCanvas) return;
+      const { ctx, width, height } = syncCanvasSize(cloudBarsCanvas);
+      ctx.fillStyle = '#041126';
+      ctx.fillRect(0, 0, width, height);
+
+      const rrLoads = state.baselineRR.vmLoads;
+      const sflaLoads = state.bestSfla.eval.vmLoads;
+      const wcaLoads = state.bestWca.eval.vmLoads;
+      const maxLoad = Math.max(10, state.baselineRR.makespan * 1.08);
+
+      const padL = 128;
+      const padR = 54;
+      const padT = 36;
+      const barAreaW = Math.max(40, width - padL - padR);
+
+      ctx.font = '700 12.5px "Plus Jakarta Sans", sans-serif';
+      ctx.fillStyle = '#d6e3ff';
+      ctx.textAlign = 'left';
+      ctx.fillText('Durasi Eksekusi per Virtual Machine (Detik) · Garis Putus = Makespan', 14, 21);
+
+      const groupH = (height - padT - 20) / state.vms.length;
+
+      state.vms.forEach((vm, vIdx) => {
+        const gy = padT + vIdx * groupH;
+
+        ctx.font = '700 11px "Plus Jakarta Sans", sans-serif';
+        ctx.fillStyle = '#ecf3ff';
+        ctx.textAlign = 'left';
+        ctx.fillText(vm.name, 14, gy + 18);
+
+        ctx.font = '600 10px "Plus Jakarta Sans", sans-serif';
+        ctx.fillStyle = '#8a99b2';
+        ctx.fillText(`${vm.mips} MIPS`, 14, gy + 32);
+
+        const bars = [
+          { label: 'RR', val: rrLoads[vIdx], color: '#e05a5f' },
+          { label: 'SFLA', val: sflaLoads[vIdx], color: '#12b0a2' },
+          { label: 'WCA', val: wcaLoads[vIdx], color: '#26aee4' }
+        ];
+
+        bars.forEach((b, bIdx) => {
+          const by = gy + 4 + bIdx * 16;
+          const bw = Math.max(2, (b.val / maxLoad) * barAreaW);
+
+          ctx.fillStyle = 'rgba(25, 40, 65, 0.75)';
+          ctx.fillRect(padL, by, barAreaW, 12);
+
+          ctx.fillStyle = b.color;
+          ctx.fillRect(padL, by, bw, 12);
+
+          ctx.font = '600 10px "Plus Jakarta Sans", sans-serif';
+          ctx.fillStyle = '#b8c5d9';
+          ctx.textAlign = 'left';
+          ctx.fillText(`${b.val.toFixed(1)}s`, padL + bw + 5, by + 9.5);
+        });
+      });
+
+      // Garis penanda Makespan terbaik
+      const drawMakespanLine = (msVal, color) => {
+        const px = padL + (msVal / maxLoad) * barAreaW;
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.4;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(px, padT);
+        ctx.lineTo(px, height - 12);
+        ctx.stroke();
+        ctx.restore();
+      };
+
+      drawMakespanLine(state.baselineRR.makespan, 'rgba(224, 90, 95, 0.65)');
+      drawMakespanLine(state.bestSfla.eval.makespan, 'rgba(18, 176, 162, 0.85)');
+      drawMakespanLine(state.bestWca.eval.makespan, 'rgba(38, 174, 228, 0.85)');
+    }
+
+    function updateCloudUI() {
+      const st = cloudOpt.getState();
+      const rrMs = st.baselineRR.makespan;
+      const sflaMs = st.bestSfla.eval.makespan;
+      const wcaMs = st.bestWca.eval.makespan;
+
+      const sflaGain = ((rrMs - sflaMs) / Math.max(1e-6, rrMs)) * 100;
+      const wcaGain = ((rrMs - wcaMs) / Math.max(1e-6, rrMs)) * 100;
+
+      const rrEl = container.querySelector('#cloud-kpi-rr');
+      const sEl = container.querySelector('#cloud-kpi-sfla');
+      const sgEl = container.querySelector('#cloud-kpi-sfla-gain');
+      const wEl = container.querySelector('#cloud-kpi-wca');
+      const wgEl = container.querySelector('#cloud-kpi-wca-gain');
+      const itEl = container.querySelector('#cloud-kpi-iter');
+
+      if (rrEl) rrEl.textContent = `${rrMs.toFixed(2)} dtk`;
+      if (sEl) sEl.textContent = `${sflaMs.toFixed(2)} dtk`;
+      if (sgEl) sgEl.textContent = `Hemat ${sflaGain.toFixed(1)}% vs Round-Robin`;
+      if (wEl) wEl.textContent = `${wcaMs.toFixed(2)} dtk`;
+      if (wgEl) wgEl.textContent = `Hemat ${wcaGain.toFixed(1)}% vs Round-Robin`;
+      if (itEl) itEl.textContent = `${st.iteration} / ${st.maxIterations}`;
+
+      renderCloudBars(st);
+      renderConvergenceChart(
+        cloudChartCanvas,
+        [
+          { label: 'SFLA', color: '#12b0a2', data: st.historySfla },
+          { label: 'WCA', color: '#26aee4', data: st.historyWca }
+        ],
+        {
+          title: 'Penurunan Makespan Klaster (Detik)',
+          maxIterations: st.maxIterations,
+          zeroBaseline: false
+        }
+      );
+    }
+
+    function stopCloudTimer() {
+      if (cloudTimer) {
+        clearInterval(cloudTimer);
+        cloudTimer = null;
+      }
+      if (cloudBtnRun) cloudBtnRun.textContent = 'Optimalkan Jadwal';
+    }
+
+    function resetCloudCase() {
+      stopCloudTimer();
+      cloudSeed = Number(cloudSelSeed?.value || 42);
+      cloudOpt = new CloudScheduleOptimizer({
+        tasks: generateCloudTasks(16, cloudSeed),
+        vms: DEFAULT_VMS,
+        populationSize: 28,
+        maxIterations: 35,
+        seed: cloudSeed
+      });
+      updateCloudUI();
+    }
+
+    cloudBtnRun?.addEventListener('click', () => {
+      if (cloudTimer) {
+        stopCloudTimer();
+        return;
+      }
+      if (cloudOpt.getState().done) {
+        cloudOpt.reset();
+      }
+      if (cloudBtnRun) cloudBtnRun.textContent = 'Jeda Optimasi';
+      cloudTimer = setInterval(() => {
+        const st = cloudOpt.step();
+        updateCloudUI();
+        if (st.done) {
+          stopCloudTimer();
+        }
+      }, 110);
+    });
+
+    container.querySelector('#cloud-btn-step')?.addEventListener('click', () => {
+      stopCloudTimer();
+      cloudOpt.step();
+      updateCloudUI();
+    });
+
+    container.querySelector('#cloud-btn-reset')?.addEventListener('click', () => resetCloudCase());
+    cloudSelSeed?.addEventListener('change', () => resetCloudCase());
+
+    registerHooks?.({
+      togglePlay: () => cmpRunner.togglePlay(),
+      step: () => {
+        cmpRunner.stepOnce();
+        cloudOpt.step();
+        updateCloudUI();
+      },
+      reset: () => {
+        resetCmpArena();
+        resetCloudCase();
+      }
+    });
+
+    const onResize = () => {
+      updateCmpTelemetry();
+      cmpRunner.notifyReset();
+      updateCloudUI();
+    };
+    window.addEventListener('resize', onResize);
+
+    updateCmpTelemetry();
+    cmpRunner.startLoop();
+    requestAnimationFrame(() => updateCloudUI());
+
+    return () => {
+      window.removeEventListener('resize', onResize);
+      cmpRunner.destroy();
+      stopCloudTimer();
+    };
+  }
+};
+
+  exports.tabKomparasi = tabKomparasi;
   },
   "algorithms/cloudScheduling.js": function(exports, __require) {
 /**

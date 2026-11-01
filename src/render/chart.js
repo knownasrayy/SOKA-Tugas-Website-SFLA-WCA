@@ -1,6 +1,7 @@
 /**
- * Grafik Konvergensi Fitness Terbaik per Iterasi (F-09)
- * Mendukung satu seri (SFLA atau WCA) maupun multi-seri (Perbandingan SFLA vs WCA).
+ * Grafik Konvergensi Fitness Terbaik per Iterasi
+ * Mengikuti aturan visual flat data-terminal ITS: latar datar #000E25, 4 garis grid tipis #243F81,
+ * segmen garis lurus tegas, dan warna seri resmi ITS (#12B0A2 SFLA, #26AEE4 WCA, #FDBB16 Laut/Optimum).
  */
 
 import { syncCanvasSize } from './contourRenderer.js';
@@ -12,21 +13,21 @@ export function renderConvergenceChart(canvas, seriesList, options = {}) {
 
   const padLeft = 58;
   const padRight = 18;
-  const padTop = 28;
-  const padBottom = 32;
+  const padTop = 30;
+  const padBottom = 30;
   const plotW = Math.max(20, width - padLeft - padRight);
   const plotH = Math.max(20, height - padTop - padBottom);
 
-  // Latar belakang area plot
-  ctx.fillStyle = 'rgba(4, 12, 22, 0.72)';
+  // Latar belakang datar kontainer grafik (surface-container-lowest ITS)
+  ctx.fillStyle = '#041126';
   ctx.fillRect(0, 0, width, height);
 
-  // Judul mini grafik
-  ctx.font = '700 13px "Plus Jakarta Sans", sans-serif';
-  ctx.fillStyle = '#cbd5e1';
-  ctx.fillText(options.title || 'Grafik Konvergensi (Fitness Terbaik)', 14, 18);
+  // Judul grafik di kiri atas
+  ctx.font = '700 12.5px "Plus Jakarta Sans", sans-serif';
+  ctx.fillStyle = '#d6e3ff';
+  ctx.textAlign = 'left';
+  ctx.fillText(options.title || 'Kurva Konvergensi Fitness', 14, 19);
 
-  // Kumpulkan rentang data X dan Y
   let maxIter = Math.max(10, options.maxIterations || 20);
   let maxVal = 0;
   let minVal = Infinity;
@@ -46,11 +47,11 @@ export function renderConvergenceChart(canvas, seriesList, options = {}) {
   const yFloor = options.zeroBaseline !== false ? 0 : Math.max(0, minVal * 0.9);
   const yCeil = maxVal <= yFloor + 1e-6 ? yFloor + 1 : maxVal * 1.08;
 
-  // Grid horizontal (4 garis)
-  ctx.strokeStyle = 'rgba(148, 163, 184, 0.15)';
+  // Empat garis grid horizontal (Biru Cover ITS #243F81 dengan opasitas tenang)
+  ctx.strokeStyle = 'rgba(36, 63, 129, 0.48)';
   ctx.lineWidth = 1;
-  ctx.font = '400 11px "Ubuntu Mono", monospace';
-  ctx.fillStyle = '#94a3b8';
+  ctx.font = '600 10.5px "Plus Jakarta Sans", sans-serif';
+  ctx.fillStyle = '#8a99b2';
   ctx.textAlign = 'right';
 
   for (let i = 0; i <= 3; i++) {
@@ -63,8 +64,9 @@ export function renderConvergenceChart(canvas, seriesList, options = {}) {
     ctx.lineTo(padLeft + plotW, py);
     ctx.stroke();
 
-    const formatted = val >= 10 ? val.toFixed(1) : val >= 0.1 ? val.toFixed(2) : val.toExponential(1);
-    ctx.fillText(formatted, padLeft - 6, py + 4);
+    const formatted =
+      val >= 10 ? val.toFixed(1) : val >= 0.1 ? val.toFixed(2) : val === 0 ? '0' : val.toExponential(1);
+    ctx.fillText(formatted, padLeft - 7, py + 3.5);
   }
 
   // Label sumbu X
@@ -73,15 +75,15 @@ export function renderConvergenceChart(canvas, seriesList, options = {}) {
   for (let i = 0; i <= xTicks; i++) {
     const iterVal = Math.round((i / xTicks) * maxIter);
     const px = padLeft + (iterVal / maxIter) * plotW;
-    ctx.fillText(`${iterVal}`, px, padTop + plotH + 18);
+    ctx.fillText(`${iterVal}`, px, padTop + plotH + 17);
   }
-  ctx.fillStyle = '#64748b';
-  ctx.fillText('Iterasi', padLeft + plotW / 2, height - 3);
+  ctx.fillStyle = '#8a99b2';
+  ctx.fillText(options.xLabel || 'Iterasi', padLeft + plotW / 2, height - 3);
 
-  // Gambar kurva tiap seri
+  // Gambar seri data
   seriesList.forEach((s, sIdx) => {
     if (!s.data || s.data.length === 0) return;
-    const color = s.color || '#34d399';
+    const color = s.color || '#12b0a2';
 
     const points = s.data.map((pt) => {
       const px = padLeft + (pt.iteration / maxIter) * plotW;
@@ -90,52 +92,57 @@ export function renderConvergenceChart(canvas, seriesList, options = {}) {
       return { px, py, val: pt.bestFitness };
     });
 
-    // Area gradien tipis di bawah kurva bila hanya 1 seri
+    // Isian datar 14% opasitas untuk grafik seri tunggal (sesuai app-screens.md)
     if (seriesList.length === 1 && points.length > 1) {
-      const grad = ctx.createLinearGradient(0, padTop, 0, padTop + plotH);
-      grad.addColorStop(0, s.fillTop || 'rgba(16, 185, 129, 0.28)');
-      grad.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
       ctx.beginPath();
       ctx.moveTo(points[0].px, padTop + plotH);
       points.forEach((p) => ctx.lineTo(p.px, p.py));
       ctx.lineTo(points[points.length - 1].px, padTop + plotH);
       ctx.closePath();
-      ctx.fillStyle = grad;
+      ctx.fillStyle = s.fillFlat || 'rgba(18, 176, 162, 0.14)';
       ctx.fill();
     }
 
-    // Garis kurva utama
+    // Garis lurus antar titik iterasi
     ctx.beginPath();
     points.forEach((p, idx) => {
       if (idx === 0) ctx.moveTo(p.px, p.py);
       else ctx.lineTo(p.px, p.py);
     });
     ctx.strokeStyle = color;
-    ctx.lineWidth = 2.6;
+    ctx.lineWidth = 2.2;
     ctx.lineJoin = 'round';
     ctx.stroke();
 
-    // Titik ujung terakhir
+    // Titik nilai terkini di ujung kurva
     const last = points[points.length - 1];
     ctx.beginPath();
-    ctx.arc(last.px, last.py, 4.5, 0, Math.PI * 2);
+    ctx.arc(last.px, last.py, 4, 0, Math.PI * 2);
     ctx.fillStyle = color;
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#041126';
+    ctx.lineWidth = 1.6;
     ctx.fill();
     ctx.stroke();
 
-    // Legenda kanan atas untuk multi-seri
+    // Legenda kanan atas untuk perbandingan multi-seri
     if (seriesList.length > 1) {
-      const lx = width - padRight - (seriesList.length - 1 - sIdx) * 110 - 6;
+      const slotW = 118;
+      const rightEdge = width - padRight - (seriesList.length - 1 - sIdx) * slotW;
+      const disp = last.val < 0.001 && last.val > 0 ? last.val.toExponential(1) : last.val.toFixed(3);
+      const labelStr = `${s.label}: ${disp}`;
+
+      ctx.font = '700 11.5px "Plus Jakarta Sans", sans-serif';
       ctx.textAlign = 'right';
-      ctx.font = '700 12px "Ubuntu Mono", monospace';
       ctx.fillStyle = color;
-      const disp = last.val < 0.001 ? last.val.toExponential(1) : last.val.toFixed(3);
-      ctx.fillText(`● ${s.label}: ${disp}`, lx, 18);
+      ctx.fillText(labelStr, rightEdge, 19);
+
+      const textW = ctx.measureText(labelStr).width;
+      ctx.beginPath();
+      ctx.arc(rightEdge - textW - 7, 15, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
     }
   });
 
   ctx.textAlign = 'left';
 }
-

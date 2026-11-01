@@ -1,7 +1,6 @@
-import { DeckController } from './ui/navigation.js';
-import { slides } from './slides/index.js';
+import { WorkspaceController } from './ui/navigation.js';
+import { tabs } from './tabs/index.js';
 
-// Polyfill ringan CanvasRenderingContext2D.roundRect untuk kompatibilitas proyektor/browser lama
 if (
   typeof CanvasRenderingContext2D !== 'undefined' &&
   !CanvasRenderingContext2D.prototype.roundRect
@@ -19,9 +18,9 @@ if (
 }
 
 function bootstrap() {
-  const deck = new DeckController(slides);
-  deck.init();
-  window.__SFLA_WCA_DECK__ = deck;
+  const workspace = new WorkspaceController(tabs);
+  workspace.init();
+  window.__SFLA_WCA_WORKSPACE__ = workspace;
 }
 
 if (document.readyState === 'loading') {
