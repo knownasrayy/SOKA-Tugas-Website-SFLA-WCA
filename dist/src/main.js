@@ -1,5 +1,5 @@
-import { WorkspaceController } from './ui/navigation.js';
-import { tabs } from './tabs/index.js';
+import { DeckController } from './ui/navigation.js';
+import { slides } from './slides/index.js';
 
 if (
   typeof CanvasRenderingContext2D !== 'undefined' &&
@@ -18,9 +18,13 @@ if (
 }
 
 function bootstrap() {
-  const workspace = new WorkspaceController(tabs);
-  workspace.init();
-  window.__SFLA_WCA_WORKSPACE__ = workspace;
+  // Kanvas hanya memakai font yang sudah dimuat; muat lebih awal agar label tidak sempat tampil dengan font cadangan
+  document.fonts?.load('700 32px "Inter"');
+  document.fonts?.load('700 32px "JetBrains Mono"');
+
+  const deck = new DeckController(slides);
+  deck.init();
+  window.__SFLA_WCA_DECK__ = deck;
 }
 
 if (document.readyState === 'loading') {

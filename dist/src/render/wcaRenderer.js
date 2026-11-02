@@ -2,9 +2,56 @@
  * Renderer Visual WCA (Metafora Siklus Air Hidrologi)
  * Menggunakan Palet Resmi ITS: Biru Tua Lambang (#127BBE), FTK Summer Sky (#26AEE4),
  * Biru Muda Lambang (#75BDE0), dan Kuning Tua ITS (#FDBB16) untuk titik Laut terbaik.
+ * Seluruh ukuran mengikuti faktor `u` dari ukuran kanvas agar konsisten di layar apa pun.
  */
 
 import { ContourMapCache, syncCanvasSize } from './contourRenderer.js';
+import { COLORS, drawCloud, drawDrop, drawGlow, drawPill, drawText } from './sprites.js';
+
+export function drawSeaMarker(ctx, x, y, size, time = 0) {
+  drawGlow(ctx, x, y, size * 2.6, 'rgba(253, 187, 22, 0.42)');
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, size, 0, Math.PI * 2);
+  ctx.fillStyle = COLORS.blue;
+  ctx.strokeStyle = COLORS.gold;
+  ctx.lineWidth = Math.max(2, size * 0.17);
+  ctx.fill();
+  ctx.stroke();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = Math.max(1.5, size * 0.13);
+  ctx.lineCap = 'round';
+  for (const row of [-0.26, 0.26]) {
+    ctx.beginPath();
+    for (let i = 0; i <= 12; i++) {
+      const px = -0.58 + (i / 12) * 1.16;
+      const py = row + Math.sin(px * 7 + time * 2.4) * 0.09;
+      if (i === 0) ctx.moveTo(x + px * size, y + py * size);
+      else ctx.lineTo(x + px * size, y + py * size);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+export function drawRiverMarker(ctx, x, y, size, label = '') {
+  drawGlow(ctx, x, y, size * 2, 'rgba(38, 174, 228, 0.5)');
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x, y - size * 1.15);
+  ctx.lineTo(x + size * 1.15, y);
+  ctx.lineTo(x, y + size * 1.15);
+  ctx.lineTo(x - size * 1.15, y);
+  ctx.closePath();
+  ctx.fillStyle = COLORS.sky;
+  ctx.strokeStyle = COLORS.ink;
+  ctx.lineWidth = Math.max(1.5, size * 0.14);
+  ctx.lineJoin = 'round';
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+  if (label) drawText(ctx, label, x, y + 1, { size: size * 0.82, weight: 800, color: COLORS.night, align: 'center' });
+}
 
 export class WCARenderer {
   constructor() {
@@ -16,282 +63,151 @@ export class WCARenderer {
     const { ctx, width, height } = syncCanvasSize(canvas);
     const alpha = options.alpha ?? 1;
     const timestamp = options.timestamp ?? 0;
-    const showOptimum = options.showOptimum ?? true;
-    const showTrails = options.showTrails ?? true;
+    const compact = options.compact ?? false;
+    const u = Math.min(width, height) / 900;
 
     const vp = this.contourCache.renderBackground(ctx, width, height, objective, 'water', {
-      showOptimum
+      showOptimum: options.showOptimum ?? true
     });
     if (!vp) return;
 
-    const dropScreenMap = new Map();
+    const screen = new Map();
     for (const d of state.drops) {
-      const ix = d.prevX + (d.x - d.prevX) * alpha;
-      const iy = d.prevY + (d.y - d.prevY) * alpha;
-      dropScreenMap.set(d.id, vp.worldToScreen(ix, iy));
+      screen.set(d.id, vp.worldToScreen(d.prevX + (d.x - d.prevX) * alpha, d.prevY + (d.y - d.prevY) * alpha));
     }
 
     const seaDrop = state.drops.find((d) => d.role === 'sea');
 
-    // 1. Lingkaran radius penguapan dmax di sekitar Laut
+    // 1. Radius penguapan dmax di sekitar Laut
     if (seaDrop && state.phase !== 'INIT') {
-      const seaPos = dropScreenMap.get(seaDrop.id);
-      const dmaxPx = Math.max(8, vp.worldDistToPx(state.dmax));
+      const seaPos = screen.get(seaDrop.id);
+      const radius = Math.max(10 * u, vp.worldDistToPx(state.dmax));
       ctx.save();
       ctx.beginPath();
-      ctx.arc(seaPos.x, seaPos.y, dmaxPx, 0, Math.PI * 2);
-      ctx.fillStyle =
-        state.phase === 'EVAPORATION'
-          ? 'rgba(38, 174, 228, 0.18)'
-          : 'rgba(117, 189, 224, 0.08)';
+      ctx.arc(seaPos.x, seaPos.y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = state.phase === 'EVAPORATION' ? 'rgba(255, 255, 255, 0.22)' : 'rgba(255, 255, 255, 0.08)';
       ctx.fill();
-      ctx.strokeStyle = 'rgba(117, 189, 224, 0.72)';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([5, 5]);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+      ctx.lineWidth = Math.max(1.5, 2.4 * u);
+      ctx.setLineDash([9 * u, 8 * u]);
       ctx.stroke();
-      ctx.setLineDash([]);
-
-      if (!options.compact && dmaxPx > 22) {
-        ctx.font = '700 11px "Plus Jakarta Sans", sans-serif';
-        ctx.fillStyle = '#cee5ff';
-        ctx.fillText('dmax', seaPos.x + dmaxPx + 6, seaPos.y + 4);
-      }
       ctx.restore();
+      if (!compact && radius > 34 * u) {
+        drawText(ctx, 'dmax', seaPos.x + radius + 10 * u, seaPos.y, { size: 22 * u, color: COLORS.ink, mono: true });
+      }
     }
 
-    // 2. Jaringan aliran hidrologi (Stream -> River/Sea, River -> Sea)
-    if (state.phase !== 'INIT' && showTrails) {
+    // 2. Jaringan aliran: garis bergerak menuju induk
+    if (state.phase !== 'INIT') {
       ctx.save();
-      const dashOffset = -(timestamp * 0.03) % 24;
+      ctx.lineCap = 'round';
+      const dashOffset = -(timestamp * 0.05) % 40;
       for (const d of state.drops) {
         if (!d.parentId) continue;
-        const from = dropScreenMap.get(d.id);
-        const to = dropScreenMap.get(d.parentId);
-        if (!from || !to) continue;
+        const from = screen.get(d.id);
+        const to = screen.get(d.parentId);
+        if (!from || !to || Math.hypot(to.x - from.x, to.y - from.y) < 6) continue;
 
-        const dx = to.x - from.x;
-        const dy = to.y - from.y;
-        const dist = Math.hypot(dx, dy);
-        if (dist < 4) continue;
-
-        const nx = -dy * 0.14;
-        const ny = dx * 0.14;
-        const cx = (from.x + to.x) / 2 + nx;
-        const cy = (from.y + to.y) / 2 + ny;
-
+        const isRiver = d.role === 'river';
         ctx.beginPath();
         ctx.moveTo(from.x, from.y);
-        ctx.quadraticCurveTo(cx, cy, to.x, to.y);
-
-        if (d.role === 'river') {
-          ctx.strokeStyle = 'rgba(38, 174, 228, 0.58)';
-          ctx.lineWidth = 2.3;
-          ctx.setLineDash([8, 5]);
-          ctx.lineDashOffset = dashOffset;
-        } else {
-          ctx.strokeStyle = 'rgba(117, 189, 224, 0.28)';
-          ctx.lineWidth = 1.25;
-          ctx.setLineDash([]);
-        }
+        ctx.quadraticCurveTo(
+          (from.x + to.x) / 2 - (to.y - from.y) * 0.14,
+          (from.y + to.y) / 2 + (to.x - from.x) * 0.14,
+          to.x,
+          to.y
+        );
+        ctx.strokeStyle = isRiver ? 'rgba(255, 255, 255, 0.8)' : 'rgba(205, 236, 255, 0.42)';
+        ctx.lineWidth = (isRiver ? 4 : 2) * u;
+        ctx.setLineDash(isRiver ? [18 * u, 12 * u] : [8 * u, 10 * u]);
+        ctx.lineDashOffset = dashOffset * u;
         ctx.stroke();
       }
-      ctx.setLineDash([]);
       ctx.restore();
     }
 
-    // 3. Kilatan pertukaran peran (ROLE_SWAP)
-    if (state.phase === 'ROLE_SWAP' && state.swaps.length > 0) {
-      for (const sw of state.swaps) {
-        this.drawSwapFlash(ctx, vp, sw, alpha);
-      }
+    // 3. Kilatan pertukaran peran
+    if (state.phase === 'ROLE_SWAP') {
+      state.swaps.forEach((swap, i) => this.drawSwap(ctx, vp, swap, alpha, u, i === 0 && !compact));
     }
 
-    // 4. Urutan render: Stream -> River -> Sea
+    // 4. Urutan gambar: Aliran -> Sungai -> Laut
     const orderRank = { stream: 0, river: 1, sea: 2 };
-    const orderedDrops = [...state.drops].sort(
-      (a, b) => (orderRank[a.role] ?? 0) - (orderRank[b.role] ?? 0)
-    );
+    const ordered = [...state.drops].sort((a, b) => (orderRank[a.role] ?? 0) - (orderRank[b.role] ?? 0));
 
-    for (const d of orderedDrops) {
-      const pos = dropScreenMap.get(d.id);
-      if (!pos) continue;
-
+    for (const d of ordered) {
+      const pos = screen.get(d.id);
       if (d.role === 'sea') {
-        this.drawSea(ctx, pos.x, pos.y, options.compact);
+        drawSeaMarker(ctx, pos.x, pos.y, (compact ? 18 : 24) * u, timestamp / 1000);
+        if (!compact) {
+          drawPill(ctx, 'Laut', pos.x, pos.y - 48 * u, { size: Math.max(11, 20 * u) });
+        }
       } else if (d.role === 'river') {
-        this.drawRiver(ctx, pos.x, pos.y, d.riverIndex, options.compact);
+        drawRiverMarker(ctx, pos.x, pos.y, (compact ? 13 : 17) * u, compact ? '' : `S${d.riverIndex}`);
       } else {
-        const parentPos = d.parentId ? dropScreenMap.get(d.parentId) : null;
-        this.drawStream(ctx, pos.x, pos.y, parentPos);
+        const parent = d.parentId ? screen.get(d.parentId) : null;
+        const angle = parent ? Math.atan2(parent.y - pos.y, parent.x - pos.x) : Math.PI / 2;
+        drawDrop(ctx, pos.x, pos.y, (compact ? 7.5 : 10) * u, '#e6f6ff', { angle });
       }
 
-      if (state.phase === 'EVAPORATION' && d.evaporating) {
-        this.drawVaporEffect(ctx, pos.x, pos.y, alpha);
-      }
-
-      if (state.phase === 'RAIN' && d.justRained) {
-        this.drawRainEffect(ctx, pos.x, pos.y, alpha);
-      }
+      if (state.phase === 'EVAPORATION' && d.evaporating) this.drawVapor(ctx, pos.x, pos.y, alpha, u);
+      if (state.phase === 'RAIN' && d.justRained) this.drawRain(ctx, pos.x, pos.y, alpha, u);
     }
   }
 
-  drawStream(ctx, x, y, parentPos) {
+  drawSwap(ctx, vp, swap, alpha, u, withLabel) {
+    const a = vp.worldToScreen(swap.fromX, swap.fromY);
+    const b = vp.worldToScreen(swap.toX, swap.toY);
     ctx.save();
-    ctx.translate(x, y);
-    let angle = -Math.PI / 2;
-    if (parentPos) {
-      angle = Math.atan2(parentPos.y - y, parentPos.x - x);
-    }
-    ctx.rotate(angle);
-
-    ctx.beginPath();
-    ctx.moveTo(8, 0);
-    ctx.quadraticCurveTo(-2, 5.8, -6, 0);
-    ctx.quadraticCurveTo(-2, -5.8, 8, 0);
-    ctx.closePath();
-    ctx.fillStyle = '#cee5ff';
-    ctx.strokeStyle = '#03132b';
-    ctx.lineWidth = 1.5;
-    ctx.fill();
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  drawRiver(ctx, x, y, riverIdx, compact = false) {
-    ctx.save();
-    ctx.translate(x, y);
-
-    const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, 17);
-    glow.addColorStop(0, 'rgba(38, 174, 228, 0.55)');
-    glow.addColorStop(1, 'rgba(38, 174, 228, 0)');
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(0, 0, 17, 0, Math.PI * 2);
-    ctx.fill();
-
-    const r = compact ? 8.5 : 10.5;
-    ctx.beginPath();
-    ctx.moveTo(0, -r);
-    ctx.lineTo(r, 0);
-    ctx.lineTo(0, r);
-    ctx.lineTo(-r, 0);
-    ctx.closePath();
-    ctx.fillStyle = '#26aee4';
-    ctx.strokeStyle = '#ecf3ff';
-    ctx.lineWidth = 1.9;
-    ctx.fill();
-    ctx.stroke();
-
-    if (!compact) {
-      ctx.font = '800 9.5px "Plus Jakarta Sans", sans-serif';
-      ctx.fillStyle = '#03132b';
-      ctx.textAlign = 'center';
-      ctx.fillText(`S${riverIdx}`, 0, 3.4);
-    }
-    ctx.restore();
-  }
-
-  drawSea(ctx, x, y, compact = false) {
-    ctx.save();
-    ctx.translate(x, y);
-
-    const glow = ctx.createRadialGradient(0, 0, 3, 0, 0, 26);
-    glow.addColorStop(0, 'rgba(18, 123, 190, 0.82)');
-    glow.addColorStop(0.55, 'rgba(253, 187, 22, 0.34)');
-    glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(0, 0, 26, 0, Math.PI * 2);
-    ctx.fill();
-
-    const r = compact ? 11 : 13.5;
-    ctx.beginPath();
-    ctx.arc(0, 0, r, 0, Math.PI * 2);
-    ctx.fillStyle = '#127bbe';
-    ctx.strokeStyle = '#fdbb16';
-    ctx.lineWidth = 2.8;
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(-6, 1);
-    ctx.quadraticCurveTo(-3, -3, 0, 1);
-    ctx.quadraticCurveTo(3, 5, 6, 1);
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2.1;
-    ctx.stroke();
-
-    if (!compact) {
-      ctx.font = '800 10.5px "Plus Jakarta Sans", sans-serif';
-      ctx.fillStyle = '#fdbb16';
-      ctx.textAlign = 'center';
-      ctx.fillText('LAUT', 0, -r - 6);
-    }
-    ctx.restore();
-  }
-
-  drawSwapFlash(ctx, vp, sw, alpha) {
-    const a = vp.worldToScreen(sw.fromX, sw.fromY);
-    const b = vp.worldToScreen(sw.toX, sw.toY);
-
-    ctx.save();
+    ctx.strokeStyle = COLORS.gold;
+    ctx.lineWidth = 4 * u;
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
-    ctx.strokeStyle = '#fdbb16';
-    ctx.lineWidth = 2.6;
     ctx.stroke();
-
-    const r = 10 + (1 - alpha) * 15;
-    ctx.beginPath();
-    ctx.arc(a.x, a.y, r, 0, Math.PI * 2);
-    ctx.strokeStyle = '#fdbb16';
-    ctx.lineWidth = 2.2;
-    ctx.stroke();
-
-    ctx.font = '800 11px "Plus Jakarta Sans", sans-serif';
-    ctx.fillStyle = '#fdbb16';
-    ctx.fillText('TUKAR PERAN', a.x + 12, a.y - 10);
+    ctx.lineWidth = 3 * u;
+    ctx.globalAlpha = 1 - alpha * 0.7;
+    for (const pt of [a, b]) {
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, (16 + alpha * 34) * u, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     ctx.restore();
+    if (withLabel) drawPill(ctx, 'Bertukar peran', a.x, a.y - 44 * u, { size: Math.max(11, 22 * u) });
   }
 
-  drawVaporEffect(ctx, x, y, alpha) {
+  drawVapor(ctx, x, y, alpha, u) {
     ctx.save();
-    const lift = alpha * 32;
+    const rise = alpha * 70 * u;
     for (let i = 0; i < 3; i++) {
-      const ox = (i - 1) * 8;
-      const oy = -lift - i * 7;
       ctx.beginPath();
-      ctx.arc(x + ox, y + oy, 4.8 + i * 1.4, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(214, 227, 255, ${Math.max(0.16, 0.76 - alpha * 0.5)})`;
+      ctx.arc(x + (i - 1) * 13 * u, y - rise - i * 16 * u, (8 + i * 3) * u, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 255, 255, ${0.82 - alpha * 0.42})`;
       ctx.fill();
     }
-    ctx.font = '700 10.5px "Plus Jakarta Sans", sans-serif';
-    ctx.fillStyle = '#d6e3ff';
-    ctx.fillText('UAP', x + 10, y - lift - 8);
     ctx.restore();
   }
 
-  drawRainEffect(ctx, x, y, alpha) {
+  drawRain(ctx, x, y, alpha, u) {
+    const cloudY = y - 92 * u;
+    drawCloud(ctx, x, cloudY, 24 * u, '#e6f0fa', 1 - alpha * 0.8);
     ctx.save();
-    const dropY = y - (1 - alpha) * 42;
-
-    ctx.strokeStyle = '#75bde0';
-    ctx.lineWidth = 2;
-    for (const dx of [-6, 0, 6]) {
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3 * u;
+    ctx.lineCap = 'round';
+    ctx.globalAlpha = 1 - alpha * 0.5;
+    for (const dx of [-14, 0, 14]) {
+      const top = cloudY + 22 * u + alpha * 34 * u + Math.abs(dx) * u;
       ctx.beginPath();
-      ctx.moveTo(x + dx + 4, dropY - 18);
-      ctx.lineTo(x + dx, dropY - 4);
+      ctx.moveTo(x + dx * u + 3 * u, top);
+      ctx.lineTo(x + dx * u, top + 16 * u);
       ctx.stroke();
     }
-
-    if (alpha > 0.3) {
-      ctx.beginPath();
-      ctx.arc(x, y, 8 + alpha * 14, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(117, 189, 224, ${Math.max(0, 0.82 - alpha * 0.68)})`;
-      ctx.lineWidth = 1.8;
-      ctx.stroke();
-    }
+    ctx.globalAlpha = Math.max(0, 0.9 - alpha * 0.9);
+    ctx.lineWidth = 2.6 * u;
+    ctx.beginPath();
+    ctx.arc(x, y, (12 + alpha * 32) * u, 0, Math.PI * 2);
+    ctx.stroke();
     ctx.restore();
   }
 }

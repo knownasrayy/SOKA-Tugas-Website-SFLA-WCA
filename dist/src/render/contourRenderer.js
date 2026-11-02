@@ -4,6 +4,8 @@
  * Skala piksel seragam (uniform scale) agar jarak Euclidean seperti radius dmax tetap bulat sempurna.
  */
 
+import { drawStar } from './sprites.js';
+
 function lerpColor(stops, t) {
   const clamped = Math.max(0, Math.min(1, t));
   const scaled = clamped * (stops.length - 1);
@@ -18,33 +20,25 @@ function lerpColor(stops, t) {
   ];
 }
 
+// Lembah (biaya rendah) dibuat paling terang dan puncak paling gelap, sehingga mata penonton langsung tertuju ke target
 const PALETTES = {
-  // Kolam teratai SFLA: palung Navy ITS (#03132B) menuju cekungan Medical Tosca FKK (#12B0A2) & tepi Biru Cover
+  // Kolam teratai SFLA: cekungan Medical Tosca FKK (#12B0A2) memudar ke Navy ITS (#03132B)
   pond: [
-    [3, 19, 43],
-    [8, 46, 72],
-    [13, 86, 98],
-    [18, 112, 108],
-    [22, 68, 92],
-    [32, 54, 96]
+    [44, 190, 170],
+    [18, 136, 128],
+    [10, 92, 98],
+    [7, 62, 76],
+    [5, 40, 60],
+    [3, 24, 46]
   ],
-  // Siklus air WCA: palung samudra Navy ITS (#03132B) -> Biru Lambang (#127BBE) -> punggung pegunungan Biru Muda
+  // Siklus air WCA: cekungan Summer Sky FTK (#26AEE4) memudar ke Biru Lambang lalu Navy ITS
   water: [
-    [2, 15, 38],
-    [10, 44, 92],
-    [18, 92, 152],
-    [25, 72, 124],
-    [35, 63, 124],
-    [62, 92, 138]
-  ],
-  // Peta topografi umum: gradasi tenang Navy ITS menuju Biru Cover & Tosca dalam agar titik data kontras tajam
-  terrain: [
-    [3, 19, 43],
-    [10, 38, 76],
-    [16, 68, 114],
-    [18, 94, 122],
-    [24, 58, 96],
-    [30, 46, 82]
+    [70, 186, 236],
+    [24, 128, 196],
+    [14, 90, 156],
+    [9, 62, 118],
+    [5, 40, 84],
+    [3, 22, 52]
   ]
 };
 
@@ -86,7 +80,7 @@ export class ContourMapCache {
     this.offscreen = null;
   }
 
-  renderBackground(ctx, width, height, objective, paletteName = 'terrain', options = {}) {
+  renderBackground(ctx, width, height, objective, paletteName = 'pond', options = {}) {
     if (width <= 2 || height <= 2) return null;
     const vp = createViewport(width, height, objective, options.paddingRatio ?? 0.07);
     const key = `${width}x${height}:${objective.id}:${paletteName}`;
@@ -113,32 +107,10 @@ export class ContourMapCache {
     );
     ctx.setLineDash([]);
 
-    // Garis sumbu kartesian melalui (0, 0)
-    const origin = vp.worldToScreen(0, 0);
-    ctx.strokeStyle = 'rgba(117, 189, 224, 0.12)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(topLeft.x, origin.y);
-    ctx.lineTo(botRight.x, origin.y);
-    ctx.moveTo(origin.x, topLeft.y);
-    ctx.lineTo(origin.x, botRight.y);
-    ctx.stroke();
-
-    // Label koordinat domain tipis di sudut bawah peta agar tidak bertumpuk dengan HUD atas
-    if (width >= 320) {
-      const labelY = Math.min(botRight.y - 10, height - 10);
-      ctx.font = '600 10px "Plus Jakarta Sans", sans-serif';
-      ctx.fillStyle = 'rgba(184, 197, 217, 0.64)';
-      ctx.textAlign = 'left';
-      ctx.fillText(`min (${objective.min}, ${objective.min})`, topLeft.x + 8, labelY);
-      ctx.textAlign = 'right';
-      ctx.fillText(`max (${objective.max}, ${objective.max})`, botRight.x - 8, labelY);
-    }
-
     // Penanda Global Optimum (Kuning Tua Logo ITS #FDBB16)
     if (options.showOptimum !== false) {
       const optPos = vp.worldToScreen(objective.optimum.x, objective.optimum.y);
-      this.drawOptimumStar(ctx, optPos.x, optPos.y);
+      drawStar(ctx, optPos.x, optPos.y, Math.max(9, Math.min(width, height) * 0.021));
     }
     ctx.restore();
 
@@ -157,7 +129,7 @@ export class ContourMapCache {
     const img = sctx.createImageData(rw, rh);
     const data = img.data;
 
-    const stops = PALETTES[paletteName] || PALETTES.terrain;
+    const stops = PALETTES[paletteName] || PALETTES.pond;
     const normField = new Float32Array(rw * rh);
     const maxVal = objective.maxVisualValue || 50;
 
@@ -226,40 +198,6 @@ export class ContourMapCache {
     fctx.fillRect(0, 0, width, height);
 
     return fullCanvas;
-  }
-
-  drawOptimumStar(ctx, x, y) {
-    ctx.save();
-    ctx.translate(x, y);
-
-    const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, 20);
-    glow.addColorStop(0, 'rgba(253, 187, 22, 0.72)');
-    glow.addColorStop(1, 'rgba(253, 187, 22, 0)');
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(0, 0, 20, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.beginPath();
-    const spikes = 5;
-    const outerR = 9.5;
-    const innerR = 4.2;
-    for (let i = 0; i < spikes * 2; i++) {
-      const r = i % 2 === 0 ? outerR : innerR;
-      const angle = (i * Math.PI) / spikes - Math.PI / 2;
-      const sx = Math.cos(angle) * r;
-      const sy = Math.sin(angle) * r;
-      if (i === 0) ctx.moveTo(sx, sy);
-      else ctx.lineTo(sx, sy);
-    }
-    ctx.closePath();
-    ctx.fillStyle = '#fdbb16';
-    ctx.strokeStyle = '#03132b';
-    ctx.lineWidth = 1.6;
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.restore();
   }
 }
 

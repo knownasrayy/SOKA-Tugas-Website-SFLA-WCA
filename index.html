@@ -7,83 +7,53 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2303132b'/%3E%3Ccircle cx='32' cy='32' r='21' fill='none' stroke='%23127bbe' stroke-width='6' stroke-dasharray='8 5'/%3E%3Ccircle cx='32' cy='32' r='11' fill='%23fdbb16'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="./src/styles/main.css" />
 </head>
-<body data-module="konsep">
-  <div id="app" class="workspace-shell">
-    <!-- Sticky Institutional ITS Top Bar & 4-Tab Navigation -->
-    <header class="workspace-header" data-ui>
-      <div class="header-inner">
-        <div class="brand-identity">
-          <svg class="its-crest" width="34" height="34" viewBox="0 0 40 40" fill="none" aria-hidden="true">
-            <rect width="40" height="40" rx="8" fill="#102038" stroke="#243f81" stroke-width="1" />
-            <circle cx="20" cy="20" r="12.5" stroke="#127bbe" stroke-width="3.6" stroke-dasharray="4.8 3.05" />
-            <circle cx="20" cy="20" r="8.2" fill="#03132b" stroke="#75bde0" stroke-width="1.2" />
-            <circle cx="20" cy="20" r="4.2" fill="#fdbb16" />
-          </svg>
-          <div class="brand-text">
-            <span class="brand-course">Strategi Optimasi Komputasi Awan</span>
-            <span class="brand-inst">Institut Teknologi Sepuluh Nopember (ITS)</span>
-          </div>
-        </div>
+<body data-chapter="pembuka">
+  <!-- Panggung tetap 1920x1080 yang diskalakan agar pas di layar apa pun -->
+  <div id="deck" class="deck">
+    <main id="deck-stage" class="deck-stage"></main>
 
-        <nav class="workspace-tabs" id="workspace-tabs" role="tablist" aria-label="Modul Algoritma Metaheuristik"></nav>
+    <div id="chapter-wipe" class="chapter-wipe" aria-hidden="true"></div>
 
-        <div class="header-actions">
-          <button type="button" class="tool-btn" id="btn-notes" title="Catatan Narasi Presentasi (Tekan N)" aria-pressed="false">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-              <polyline points="14 2 14 8 20 8"></polyline>
-              <line x1="16" y1="13" x2="8" y2="13"></line>
-              <line x1="16" y1="17" x2="8" y2="17"></line>
-            </svg>
-            <span>Catatan <kbd>N</kbd></span>
-          </button>
-          <button type="button" class="tool-btn" id="btn-help" title="Pintasan Keyboard (Tekan ?)" aria-expanded="false">
-            <span>Pintasan <kbd>?</kbd></span>
-          </button>
-          <button type="button" class="tool-btn" id="btn-fullscreen" title="Mode Layar Penuh (Tekan F)">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-              <polyline points="15 3 21 3 21 9"></polyline>
-              <polyline points="9 21 3 21 3 15"></polyline>
-              <line x1="21" y1="3" x2="14" y2="10"></line>
-              <line x1="3" y1="21" x2="10" y2="14"></line>
-            </svg>
-            <span class="hide-sm">Layar Penuh</span>
-          </button>
-        </div>
+    <footer class="deck-bar">
+      <button type="button" class="bar-btn" id="btn-prev" aria-label="Sebelumnya" title="Sebelumnya (&larr;)">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 5 8 12 15 19"></polyline></svg>
+      </button>
+      <nav id="deck-rail" class="deck-rail" aria-label="Progres presentasi"></nav>
+      <span id="deck-counter" class="deck-counter"></span>
+      <button type="button" class="bar-btn" id="btn-notes" aria-pressed="false" title="Catatan presenter (N)">Catatan</button>
+      <button type="button" class="bar-btn" id="btn-help" title="Pintasan keyboard (?)">?</button>
+      <button type="button" class="bar-btn" id="btn-fullscreen" aria-label="Layar penuh" title="Layar penuh (F)">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>
+      </button>
+      <button type="button" class="bar-btn bar-btn-next" id="btn-next" aria-label="Berikutnya" title="Berikutnya (&rarr;)">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 5 16 12 9 19"></polyline></svg>
+      </button>
+    </footer>
+
+    <aside id="presenter-notes" class="notes hidden" aria-label="Catatan presenter">
+      <div class="notes-head">
+        <h2 id="notes-title"></h2>
+        <button type="button" class="close-btn" id="btn-close-notes" aria-label="Tutup catatan">&times;</button>
       </div>
-    </header>
-
-    <!-- Scrollable Active Tab Workspace -->
-    <main id="workspace-stage" class="workspace-stage" tabindex="-1"></main>
-
-    <!-- Presenter Notes Drawer -->
-    <aside id="presenter-notes" class="presenter-drawer hidden" data-ui aria-label="Catatan Narasi">
-      <div class="presenter-drawer-header">
-        <div>
-          <span class="drawer-meta">Panduan Pemaparan Materi</span>
-          <h3 id="notes-tab-title">Catatan Modul</h3>
-        </div>
-        <button type="button" class="close-btn" id="btn-close-notes" title="Tutup Catatan (N)" aria-label="Tutup Catatan">&times;</button>
-      </div>
-      <div id="notes-content" class="presenter-drawer-body"></div>
+      <div id="notes-content" class="notes-body"></div>
     </aside>
 
-    <!-- Keyboard Shortcuts Dialog -->
-    <div id="shortcuts-modal" class="modal-backdrop hidden" data-ui role="dialog" aria-modal="true" aria-label="Pintasan Keyboard">
+    <div id="shortcuts-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Pintasan keyboard">
       <div class="modal-panel">
-        <div class="modal-header">
-          <h3>Pintasan Keyboard Laboratorium</h3>
-          <button type="button" class="close-btn" id="btn-close-help" aria-label="Tutup Pintasan">&times;</button>
+        <div class="notes-head">
+          <h2>Pintasan keyboard</h2>
+          <button type="button" class="close-btn" id="btn-close-help" aria-label="Tutup pintasan">&times;</button>
         </div>
-        <div class="shortcuts-list">
-          <div class="shortcut-row"><div><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd></div><span>Pindah langsung antar keempat tab modul utama</span></div>
-          <div class="shortcut-row"><kbd>P</kbd><span>Mulai atau jeda simulasi pada tab aktif</span></div>
-          <div class="shortcut-row"><kbd>S</kbd><span>Maju 1 tahap diskrit algoritma (Step)</span></div>
-          <div class="shortcut-row"><kbd>R</kbd><span>Reset simulasi ke populasi awal</span></div>
-          <div class="shortcut-row"><kbd>N</kbd><span>Buka atau tutup panel catatan narasi</span></div>
-          <div class="shortcut-row"><kbd>F</kbd><span>Aktifkan mode layar penuh proyektor</span></div>
-          <div class="shortcut-row"><kbd>Esc</kbd><span>Tutup panel catatan atau dialog pintasan</span></div>
-        </div>
+        <dl class="shortcuts">
+          <dt><kbd>&rarr;</kbd> <kbd>Spasi</kbd></dt><dd>Berikutnya</dd>
+          <dt><kbd>&larr;</kbd></dt><dd>Sebelumnya</dd>
+          <dt><kbd>1</kbd>&ndash;<kbd>6</kbd></dt><dd>Lompat ke bab</dd>
+          <dt><kbd>P</kbd></dt><dd>Mulai atau jeda simulasi</dd>
+          <dt><kbd>S</kbd></dt><dd>Maju satu langkah simulasi</dd>
+          <dt><kbd>R</kbd></dt><dd>Reset simulasi</dd>
+          <dt><kbd>N</kbd></dt><dd>Catatan presenter</dd>
+          <dt><kbd>F</kbd></dt><dd>Layar penuh</dd>
+        </dl>
       </div>
     </div>
   </div>

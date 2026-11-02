@@ -3,29 +3,31 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { tabs } from '../src/tabs/index.js';
+import { slides } from '../src/slides/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
 
-test('Struktur workspace berbasis 4 tab ITS (bukan slide deck)', () => {
-  assert.equal(tabs.length, 4, `Harus 4 tab utama, ditemukan ${tabs.length}`);
-  const expectedIds = ['konsep', 'sfla', 'wca', 'komparasi'];
-  tabs.forEach((tab, idx) => {
-    assert.equal(tab.id, expectedIds[idx]);
-    assert.ok(tab.label && tab.label.length > 3, `Tab ${tab.id} wajib memiliki label`);
-    assert.ok(tab.title && tab.title.length > 5, `Tab ${tab.id} wajib memiliki title`);
-    assert.equal(typeof tab.mount, 'function', `Tab ${tab.id} wajib memiliki fungsi mount`);
-    assert.ok(tab.notes && tab.notes.length > 20, `Tab ${tab.id} wajib memiliki panduan narasi`);
-  });
+test('Deck presentasi memuat seluruh bab dengan urutan yang benar', () => {
+  const chapterOrder = [...new Set(slides.map((s) => s.chapter.id))];
+  assert.deepEqual(chapterOrder, ['pembuka', 'sfla', 'wca', 'adu', 'kasus', 'penutup']);
+
+  const ids = slides.map((s) => s.id);
+  assert.equal(new Set(ids).size, ids.length, 'ID slide wajib unik');
+  for (const required of ['sfla-inspirasi', 'sfla-karakter', 'sfla-cara', 'sfla-sim', 'wca-inspirasi', 'wca-karakter', 'wca-cara', 'wca-sim', 'kasus-run']) {
+    assert.ok(ids.includes(required), `Slide ${required} wajib ada`);
+  }
+
+  for (const slide of slides) {
+    assert.ok(slide.title && slide.title.length > 3, `Slide ${slide.id} wajib memiliki title`);
+    assert.equal(typeof slide.mount, 'function', `Slide ${slide.id} wajib memiliki fungsi mount`);
+    assert.ok(slide.notes && slide.notes.length > 20, `Slide ${slide.id} wajib memiliki catatan presenter`);
+  }
 
   const html = fs.readFileSync(path.join(rootDir, 'index.html'), 'utf8');
-  assert.ok(html.includes('id="workspace-tabs"'), 'Wajib memuat navigasi tab utama');
-  assert.ok(html.includes('role="tablist"'), 'Navigasi tab wajib memiliki role="tablist"');
-  assert.ok(html.includes('id="workspace-stage"'), 'Wajib memuat panggung tab scrollable');
-  assert.ok(!html.includes('deck-footer'), 'Tidak boleh lagi memuat footer navigasi slide');
-  assert.ok(!html.includes('1 / 18'), 'Tidak boleh lagi memuat penghitung slide 1 / 18');
-  assert.ok(!html.includes('slide-dots'), 'Tidak boleh lagi memuat titik-titik slide');
+  for (const id of ['deck', 'deck-stage', 'deck-rail', 'btn-prev', 'btn-next', 'presenter-notes', 'shortcuts-modal']) {
+    assert.ok(html.includes(`id="${id}"`), `index.html wajib memuat #${id}`);
+  }
 });
 
 test('Palet warna resmi ITS terpasang pada stylesheet utama', () => {
@@ -80,36 +82,31 @@ test('Tidak ada dependensi CDN atau URL internet eksternal saat runtime', () => 
   }
 });
 
-test('Seluruh 4 tab dan sub-modul interaktif berhasil di-mount, me-render Canvas 2D, dan dieksekusi tanpa error', () => {
+test('Seluruh slide dan beat berhasil di-mount, me-render Canvas 2D, dan dieksekusi tanpa error', () => {
   function createMockCtx() {
-    return {
-      clearRect() {},
-      fillRect() {},
-      strokeRect() {},
-      beginPath() {},
-      closePath() {},
-      moveTo() {},
-      lineTo() {},
-      arc() {},
-      arcTo() {},
-      roundRect() {},
-      quadraticCurveTo() {},
-      fill() {},
-      stroke() {},
-      save() {},
-      restore() {},
-      translate() {},
-      rotate() {},
-      setTransform() {},
-      setLineDash() {},
-      drawImage() {},
-      putImageData() {},
+    const known = {
       createImageData: (w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }),
       measureText: (txt) => ({ width: String(txt).length * 7 }),
-      fillText() {},
       createRadialGradient: () => ({ addColorStop() {} }),
       createLinearGradient: () => ({ addColorStop() {} })
     };
+    // Metode gambar lain cukup menjadi no-op, sedangkan nilai non-finite tetap ditolak seperti pemeriksa posisi
+    return new Proxy(known, {
+      get(target, prop) {
+        if (prop in target) return target[prop];
+        return (...args) => {
+          if (prop !== 'setLineDash') {
+            for (const arg of args) {
+              if (typeof arg === 'number') assert.ok(Number.isFinite(arg), `ctx.${String(prop)} menerima ${arg}`);
+            }
+          }
+        };
+      },
+      set(target, prop, value) {
+        target[prop] = value;
+        return true;
+      }
+    });
   }
 
   function parseHtmlElements(html) {
@@ -126,8 +123,9 @@ test('Seluruh 4 tab dan sub-modul interaktif berhasil di-mount, me-render Canvas
         checked: Boolean(attrs.checked),
         textContent: '',
         _innerHTML: '',
-        style: {},
+        style: { setProperty() {} },
         children: [],
+        offsetWidth: 960,
         classList: {
           add() {},
           remove() {},
@@ -252,43 +250,47 @@ test('Seluruh 4 tab dan sub-modul interaktif berhasil di-mount, me-render Canvas
   };
   globalThis.cancelAnimationFrame = () => {};
 
-  for (const tab of tabs) {
-    const { makeEl } = parseHtmlElements('');
-    const container = makeEl('SECTION');
-    let hooks = null;
+  // Menjalankan frame sepanjang garis waktu animasi, termasuk titik awal, tengah, dan akhir tiap beat
+  function runFrames(startMs, seconds) {
+    for (let elapsed = 0; elapsed <= seconds; elapsed += 0.4) {
+      const pending = rafQueue.splice(0, rafQueue.length);
+      for (const cb of pending) cb(startMs + elapsed * 1000);
+    }
+    return startMs + seconds * 1000;
+  }
 
-    const cleanup = tab.mount(container, {
-      workspace: { goToTab() {} },
-      reducedMotion: false,
-      registerHooks: (h) => {
-        hooks = h;
+  for (const reducedMotion of [false, true]) {
+    for (const slide of slides) {
+      const { makeEl } = parseHtmlElements('');
+      const container = makeEl('SECTION');
+      let hooks = {};
+      rafQueue.length = 0;
+
+      const cleanup = slide.mount(container, {
+        reducedMotion,
+        registerHooks: (h) => {
+          hooks = { ...hooks, ...h };
+        }
+      });
+
+      let clock = runFrames(performance.now(), 14);
+      for (let beat = 1; beat < (slide.beats || 1); beat++) {
+        hooks.setBeat(beat);
+        clock = runFrames(clock, 14);
       }
-    });
 
-    const pending = rafQueue.splice(0, rafQueue.length);
-    for (const cb of pending) {
-      cb(performance.now() + 120);
-    }
+      if (hooks.step) {
+        for (let i = 0; i < 8; i++) hooks.step();
+        clock = runFrames(clock, 2);
+        hooks.togglePlay();
+        clock = runFrames(clock, 6);
+        hooks.reset();
+        runFrames(clock, 1);
+      }
 
-    // Uji klik seluruh sub-tab dan tombol skenario di dalam tab
-    for (const subBtn of container.querySelectorAll('[data-sub]')) {
-      subBtn.click();
-    }
-    for (const leapBtn of container.querySelectorAll('[data-leap]')) {
-      leapBtn.click();
-    }
-    for (const flowBtn of container.querySelectorAll('[data-flow]')) {
-      flowBtn.click();
-    }
+      for (const objBtn of container.querySelectorAll('[data-obj]')) objBtn.click();
 
-    if (hooks) {
-      hooks.step();
-      hooks.step();
-      const afterStep = rafQueue.splice(0, rafQueue.length);
-      for (const cb of afterStep) cb(performance.now() + 260);
-      hooks.reset();
+      if (typeof cleanup === 'function') cleanup();
     }
-
-    if (typeof cleanup === 'function') cleanup();
   }
 });

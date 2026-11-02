@@ -7,7 +7,7 @@
 
 ## Daftar Isi
 1. [Gambaran Umum Proyek](#1-gambaran-umum-proyek)
-2. [Penjelasan Website & Fitur 4-Tab Workspace](#2-penjelasan-website--fitur-4-tab-workspace)
+2. [Alur Presentasi](#2-alur-presentasi)
 3. [Landasan Teori & Formulasi Matematika](#3-landasan-teori--formulasi-matematika)
    - [3.1. Konsep Optimasi & Fungsi Benchmark 2D](#31-konsep-optimasi--fungsi-benchmark-2d)
    - [3.2. Shuffled Frog-Leaping Algorithm (SFLA)](#32-shuffled-frog-leaping-algorithm-sfla)
@@ -28,59 +28,34 @@ Repositori ini berisi **aplikasi web laboratorium simulasi interaktif** yang dir
 1. **Shuffled Frog-Leaping Algorithm (SFLA)** — algoritma *memetic* yang terinspirasi dari perilaku pencarian makan kelompok katak di kolam teratai (Eusuff & Lansey, 2003).
 2. **Water Cycle Algorithm (WCA)** — algoritma berbasis siklus hidrologi alami yang memodelkan aliran anak sungai menuju sungai dan laut, penguapan, serta presipitasi hujan (Eskandar et al., 2012).
 
-Berbeda dari media presentasi statis, website ini dibangun sebagai **4-Tab Engineering Workspace** tempat pengguna dan audiens dapat berinteraksi langsung dengan lanskap fungsi matematika, menjalankan algoritma langkah demi langkah (*step-by-step*), memodifikasi hiperparameter secara *real-time*, mengamati kurva konvergensi, hingga menguji kedua algoritma untuk menyelesaikan masalah nyata **penyeimbangan beban kerja (*load balancing*) dan minimasi *makespan* pada *Virtual Machine* (VM) di lingkungan Komputasi Awan**.
+Website ini adalah **deck presentasi layar penuh** dengan teks seminimal mungkin: penjelasan disampaikan lewat animasi, sedangkan detail lisan disimpan di catatan presenter (tombol `N`). Simulasi di dalamnya benar-benar menjalankan algoritma di browser, dan studi kasusnya menerapkan keduanya pada **penjadwalan tugas ke *Virtual Machine* (VM) di komputasi awan untuk meminimalkan *makespan***.
 
 ---
 
-## 2. Penjelasan Website & Fitur 4-Tab Workspace
+## 2. Alur Presentasi
 
-Antarmuka website dibagi ke dalam **4 Tab Modul Mandiri** pada bilah navigasi atas (*sticky institutional header*) yang dapat digulir secara vertikal dan diakses cepat melalui tombol angka `1`–`4`:
+Deck berisi 16 slide dalam 6 bab. Sebagian slide memiliki beberapa *beat*: tombol `→` memajukan animasi di dalam slide terlebih dahulu sebelum berpindah slide.
 
-### Tab 1 — Konsep & Lanskap (`#konsep`)
-Modul pengantar interaktif untuk memahami mengapa algoritma berbasis gradien gagal pada permukaan multimodal dan bagaimana metaheuristik populasi bekerja:
-- **Bar Identitas Penyaji Interaktif:** Menampilkan informasi mata kuliah SOKA ITS serta tombol sunting nama/NRP kelompok yang tersimpan otomatis di `localStorage`.
-- **Eksplorasi Peta Topografi 2D (*Interactive Contour Map*):** Pengguna dapat memilih fungsi objektif **Rastrigin**, **Ackley**, atau **Sphere**, lalu **mengklik titik mana pun pada kanvas** untuk melihat koordinat uji $(x, y)$, nilai fungsi biaya $f(x, y)$, dan radius jarak Euclidean menuju *Global Optimum* $(0, 0)$ (ditandai bintang emas). Tersedia pula tombol **Uji Titik Jebakan Lokal** untuk mendemonstrasikan cekungan lokal Rastrigin di $(0.99, 0.99)$.
-- **Simulator Dinamika Eksplorasi vs Eksploitasi:** Simulasi langsung 18 agen populasi pada permukaan Rastrigin dengan 3 mode perilaku:
-  - *Eksplorasi Acak*: agen melompat acak ke seluruh domain tanpa konvergensi.
-  - *Eksploitasi Sempit*: agen langsung tertarik ke cekungan terdekat dan terjebak di *Local Minimum* $(0.99, 0.99)$.
-  - *Metaheuristik Seimbang*: kombinasi pertukaran informasi global dan pencarian lokal yang berhasil memusat ke *Global Minimum* $(0, 0)$.
+| Bab | Slide | Isi |
+| :--- | :--- | :--- |
+| Pembuka | `#judul` | Judul, mata kuliah, dan nama kelompok (klik untuk mengisi, tersimpan di `localStorage`) |
+| | `#masalah` | 16 tugas masuk ke 4 VM, *makespan*, dan ledakan kombinasi 4¹⁶ |
+| | `#lanskap` | Jadwal sebagai titik di lanskap, minimum lokal, eksplorasi vs eksploitasi |
+| SFLA | `#sfla-inspirasi` | Katak mencari makanan dan bertukar informasi (*meme*) |
+| | `#sfla-karakter` | Karakteristik dan parameter utama |
+| | `#sfla-cara` | Pengurutan → Partisi → Lompatan lokal (3 aturan) → Shuffle |
+| | `#sfla-sim` | Simulasi langsung `SFLAEngine` |
+| WCA | `#wca-inspirasi` | Hujan, aliran, sungai, laut, penguapan |
+| | `#wca-karakter` | Karakteristik dan parameter utama |
+| | `#wca-cara` | Hierarki → Aliran → Pertukaran peran → Penguapan & hujan |
+| | `#wca-sim` | Simulasi langsung `WCAEngine` |
+| Perbandingan | `#adu` | SFLA vs WCA berdampingan dengan posisi awal identik |
+| Studi kasus | `#kasus-kode` | Dari vektor posisi ke jadwal VM |
+| | `#kasus-run` | Round-Robin vs SFLA vs WCA pada 16 tugas dan 4 VM |
+| Penutup | `#ringkas` | Perbandingan mekanisme |
+| | `#penutup` | Rata-rata hasil 10 beban kerja (dihitung langsung) dan referensi |
 
-### Tab 2 — Simulasi SFLA (`#sfla`)
-Laboratorium lengkap untuk mempelajari dan menguji **Shuffled Frog-Leaping Algorithm**:
-- **Kanvas Simulasi Utama Kolam Teratai (60 FPS):**
-  - Menampilkan posisi seluruh katak yang diberi warna sesuai kelompok **Memeplex (`M1..Mm`)**, penanda khusus untuk katak terbaik global **$X_g$** (mahkota emas), katak terbaik lokal **$X_b$**, dan katak terburuk lokal **$X_w$**.
-  - Memvisualisasikan **panah vektor lompatan** dan **efek riak air** setiap kali katak $X_w$ melompat, lengkap dengan badge status aturan lompatan yang sedang dieksekusi (`Ke Xb`, `Ke Xg`, atau `Reset Acak`).
-- **Indikator Tahap Siklus SFLA (*Pipeline Stepper*):** Menyorot tahapan aktif secara sinkron: `INIT` $\to$ `SORT` $\to$ `PARTITION` $\to$ `LOCAL_JUMP` $\to$ `SHUFFLE` $\to$ `DONE`.
-- **Panel Telemetri, Grafik Konvergensi, & Hiperparameter:**
-  - Strip KPI *real-time*: Iterasi ke-$t$, nilai biaya terbaik $f(X_g)$, koordinat $X_g$, dan jumlah evaluasi fungsi (*Function Evaluations / FE*).
-  - Pengaturan hiperparameter interaktif: Fungsi Objektif (`Rastrigin`/`Ackley`/`Sphere`), Jumlah Memeplex $m$, Katak per Memeplex $N$, Langkah Maksimum $D_{\max}$, Kecepatan Simulasi, dan *Seed* PRNG deterministik.
-- **2 Sub-Tab Laboratorium Mekanisme Internal SFLA:**
-  - *Sub-Tab A — Partisi Memeplex & Kocok Ulang*: Simulator interaktif pembagian bergilir (*round-robin* $k = i \bmod m$) dari 12 katak ke 3 memeplex agar setiap komunitas memperoleh distribusi katak unggul dan lemah secara merata.
-  - *Sub-Tab B — 3 Aturan Lompatan Lokal*: Sandbox interaktif yang memperagakan secara visual kapan katak terburuk $X_w$ menggunakan lompatan ke $X_b$ (Langkah 1), kapan beralih ke $X_g$ (Langkah 2), dan kapan harus di-*reset* acak (Langkah 3).
-
-### Tab 3 — Simulasi WCA (`#wca`)
-Laboratorium lengkap untuk mempelajari dan menguji **Water Cycle Algorithm**:
-- **Kanvas Simulasi Utama Siklus Air (60 FPS):**
-  - Memvisualisasikan populasi tetesan hujan dalam 3 kasta hidrologi: **1 Laut (*Sea*)** sebagai solusi terbaik global, **Sungai (*Rivers* `S1..Sn`)** sebagai solusi elit, dan **Aliran (*Streams*)** sebagai tetesan air biasa.
-  - Menampilkan **kurva aliran air** menuju induknya, **lingkaran putus-putus radius penguapan $d_{\max}$** di sekeliling Laut, **kilatan *Role Swap*** saat aliran/sungai menemukan posisi yang lebih rendah dari induknya, serta **animasi partikel uap & hujan baru** saat kondisi penguapan terpenuhi.
-- **Indikator Tahap Siklus WCA (*Pipeline Stepper*):** Menyorot tahapan aktif: `INIT` $\to$ `HIERARCHY` $\to$ `FLOW` $\to$ `ROLE_SWAP` $\to$ `EVAPORATION` $\to$ `RAIN` $\to$ `DONE`.
-- **Panel Telemetri, Grafik Konvergensi, & Hiperparameter:**
-  - Strip KPI *real-time*: Iterasi ke-$t$, biaya Laut $f(X_{\text{laut}})$, radius penguapan aktif $d_{\max}$ yang menyusut seiring iterasi, dan total kejadian *Evaporasi & Hujan*.
-  - Pengaturan hiperparameter interaktif: Populasi Tetesan $N_{\text{pop}}$, Jumlah Laut + Sungai $N_{sr}$, Batas Awal $d_{\max}^0$, Koefisien Aliran $C$, Kecepatan, dan *Seed* PRNG.
-- **2 Sub-Tab Laboratorium Mekanisme Internal WCA:**
-  - *Sub-Tab A — Hierarki Intensitas NSR & Role Swap*: Kalkulator visual pembagian jumlah aliran secara proporsional terhadap kebugaran induk ($NS_n$) dan demonstrasi pertukaran peran ketika aliran mengungguli sungai.
-  - *Sub-Tab B — Kondisi Penguapan $d_{\max}$ & Hujan*: Simulator peluruhan ambang penguapan $d_{\max}(t)$ dari awal pencarian (eksplorasi luas) hingga akhir pencarian (eksploitasi presisi di sekitar Laut).
-
-### Tab 4 — Komparasi & Cloud VM (`#komparasi`)
-Modul evaluasi perbandingan langsung dan penerapan praktis pada infrastruktur Komputasi Awan:
-- **Sub-Tab 1 — Arena Head-to-Head SFLA vs WCA:**
-  - Menjalankan SFLA dan WCA **secara serentak pada dua kanvas berdampingan** dengan fungsi objektif, ukuran populasi ($N = 24$), dan *seed* PRNG awal yang **100% identik**.
-  - Dilengkapi **Grafik Konvergensi Gabungan (2 kurva)** untuk membandingkan kecepatan penurunan biaya di iterasi awal vs kemampuan keluar dari jebakan lokal di iterasi lanjut.
-- **Sub-Tab 2 — Studi Kasus Penjadwalan Cloud VM (*Cloud Task Load Balancer*):**
-  - Simulasi penjadwalan **$n$ tugas komputasi (*cloudlets*)** dengan beban instruksi beragam (`MI` — *Million Instructions*) ke **$m$ *Virtual Machine* (VM) heterogen** dengan kapasitas pemrosesan berbeda (`MIPS` — *Million Instructions Per Second*).
-  - Membandingkan hasil jadwal statis (*Round-Robin*), jadwal hasil optimasi **SFLA**, dan jadwal hasil optimasi **WCA** melalui grafik batang beban waktu eksekusi tiap VM, nilai **Makespan (detik)**, persentase penghematan waktu, serta tingkat keseimbangan beban (*Load Balance Index*).
-- **Sub-Tab 3 — Matriks Sintesis & Referensi:**
-  - Tabel perbandingan komprehensif arsitektur SFLA vs WCA, panduan pemilihan algoritma berdasarkan karakteristik beban kerja *cloud*, serta daftar pustaka ilmiah.
+Slide inspirasi, karakteristik, dan cara kerja adalah **ilustrasi**. Angka dan gerakan pada slide `#sfla-sim`, `#wca-sim`, `#adu`, `#kasus-run`, serta grafik `#penutup` berasal langsung dari mesin algoritma. Parameter simulasi (termasuk *seed*) ada di panel yang dibuka dengan tombol **Parameter**.
 
 ---
 
@@ -137,7 +112,7 @@ Diperkenalkan oleh **Muzaffar M. Eusuff dan Kevin E. Lansey (2003)**, **SFLA** a
    - **Aturan 3 (Injeksi Acak / *Censorship* jika Aturan 1 & 2 gagal):**  
      Apabila kedua lompatan terarah masih menghasilkan posisi yang lebih buruk, $\mathbf{X}_w$ dianggap terjebak di cekungan lokal dan langsung digantikan oleh posisi baru secara acak di seluruh ruang domain:
      $$\mathbf{X}_w^{\text{baru}} = \mathbf{x}_{\min} + \text{rand}() \cdot (\mathbf{x}_{\max} - \mathbf{x}_{\min})$$
-5. **Kocok Ulang Lintas Memeplex (`SHUFFLE`):**  
+5. **Shuffle Lintas Memeplex (`SHUFFLE`):**  
    Setelah seluruh *memeplex* menyelesaikan iterasi pencarian lokalnya, gabungkan kembali semua katak dari seluruh *memeplex* menjadi satu populasi utuh, urutkan ulang berdasarkan $f(\mathbf{X}_i)$, perbarui $\mathbf{X}_g$, dan partisi ulang ke *memeplex* baru. Proses ini menyebarkan solusi unggul antar-komunitas hingga kriteria berhenti terpenuhi (`DONE`).
 
 ---
@@ -195,7 +170,7 @@ $$d_{\max}(t+1) = d_{\max}(t) - \frac{d_{\max}^0}{T_{\max}}$$
 | **Struktur Populasi** | **Multi-komunitas desentralisasi:** dibagi menjadi $m$ kelompok *Memeplex* berukuran sama ($N$ katak per memeplex). | **Hierarki terpusat 3 kasta:** 1 *Laut* + $(N_{sr}-1)$ *Sungai* + $N_{\text{streams}}$ *Aliran* dengan alokasi proporsional $NS_n$. |
 | **Subjek Pembaruan per Langkah** | Hanya **katak terburuk ($\mathbf{X}_w$)** di masing-masing *memeplex* yang melompat pada setiap sub-langkah lokal. | **Seluruh aliran dan sungai** bergerak serentak menuju induknya pada setiap iterasi. |
 | **Mekanisme Eksploitasi** | Lompatan terarah $\mathbf{X}_w \to \mathbf{X}_b$ (terbaik lokal) lalu $\mathbf{X}_w \to \mathbf{X}_g$ (terbaik global). | Aliran vektoral dengan koefisien $C=2$ (*overshoot*) menuju Sungai/Laut disertai *Role Swap* instan. |
-| **Mekanisme Anti-Stagnasi (Eksplorasi)** | **Kocok Ulang (*Shuffling*)** seluruh *memeplex* secara periodik + *reset* acak (Aturan 3) jika kedua lompatan gagal. | **Penguapan & Hujan Baru** saat jarak $\|\mathbf{X}_{\text{sungai}} - \mathbf{X}_{\text{laut}}\| < d_{\max}$ dengan radius $d_{\max}$ yang menyusut adaptif. |
+| **Mekanisme Anti-Stagnasi (Eksplorasi)** | ***Shuffling*** seluruh *memeplex* secara periodik + *reset* acak (Aturan 3) jika kedua lompatan gagal. | **Penguapan & Hujan Baru** saat jarak $\|\mathbf{X}_{\text{sungai}} - \mathbf{X}_{\text{laut}}\| < d_{\max}$ dengan radius $d_{\max}$ yang menyusut adaptif. |
 | **Karakteristik Konvergensi** | Sangat tangguh mempertahankan keberagaman di lanskap multimodal ekstrem (seperti *Rastrigin*) karena tiap *memeplex* mengeksplorasi lembah berbeda sebelum di-*shuffle*. | Konvergensi awal sangat cepat menuju cekungan pusat (seperti *Sphere* & *Ackley*) karena seluruh aliran ditarik proporsional ke solusi elit $N_{sr}$. |
 
 ---
@@ -222,7 +197,7 @@ Karena SFLA dan WCA beroperasi pada vektor bilangan riil kontinu, setiap kandida
 
 $$a_i = \lfloor x_i \rfloor + 1 \in \{1, 2, \dots, m\}$$
 
-Pada simulasi di **Tab 4 (`#komparasi`)**, algoritma statis **Round-Robin** ($a_i = (i \bmod m) + 1$) membagikan tugas secara buta tanpa memedulikan ukuran `MI` tugas maupun kecepatan `MIPS` VM, sehingga VM lambat menerima tugas raksasa dan memicu *Makespan* tinggi. Sebaliknya, **SFLA** dan **WCA** secara cerdas memindahkan *cloudlet* berat ke VM berkecepatan tinggi (`MIPS` besar) dan menyeimbangkan total beban seluruh VM sehingga menghasilkan penurunan *Makespan* yang signifikan.
+Pada slide **`#kasus-run`**, algoritma statis **Round-Robin** ($a_i = (i \bmod m) + 1$) membagikan tugas secara buta tanpa memedulikan ukuran `MI` tugas maupun kecepatan `MIPS` VM, sehingga VM lambat menerima tugas raksasa dan memicu *Makespan* tinggi. Sebaliknya, **SFLA** dan **WCA** secara cerdas memindahkan *cloudlet* berat ke VM berkecepatan tinggi (`MIPS` besar) dan menyeimbangkan total beban seluruh VM sehingga menghasilkan penurunan *Makespan* yang signifikan.
 
 ---
 
@@ -238,42 +213,46 @@ Pada simulasi di **Tab 4 (`#komparasi`)**, algoritma statis **Round-Robin** ($a_
 - **Arsitektur Murni & Deterministik:**
   - **PRNG Mulberry32 (`src/core/rng.js`):** Setiap simulasi menggunakan generator angka acak semu berbasis *seed* 32-bit, menjamin eksperimen ilmiah dapat direproduksi 100% identik.
   - **Pemisahan Mesin Algoritma dari DOM (`src/algorithms/`):** Seluruh logika matematika SFLA, WCA, dan Cloud VM Scheduler ditulis sebagai *state machine* murni tanpa referensi `window` atau `document` sehingga dapat diuji secara independen di Node.js.
-  - **100% Mandiri Offline:** Tanpa ketergantungan framework eksternal maupun CDN; font *Plus Jakarta Sans* dan *Ubuntu Mono* telah dienkode langsung agar tetap berjalan saat dibuka via protokol `file://`.
+  - **100% Mandiri Offline:** Tanpa ketergantungan framework eksternal maupun CDN; font *Inter* dan *JetBrains Mono* telah dienkode langsung agar tetap berjalan saat dibuka via protokol `file://`.
 
 ---
 
 ## 5. Struktur Direktori Proyek
 
 ```text
-├── index.html                  # Shell utama aplikasi (Sticky Header ITS + 4-Tab Workspace Stage)
+├── index.html                  # Shell deck (panggung 1920x1080, bilah progres, catatan, pintasan)
 ├── public/
 │   └── app.bundle.js           # Bundel produksi mandiri untuk eksekusi langsung via file://
 ├── src/
-│   ├── main.js                 # Titik masuk aplikasi & pengikat WorkspaceController
+│   ├── main.js                 # Titik masuk aplikasi
 │   ├── core/
 │   │   ├── rng.js              # Generator angka acak deterministik Mulberry32 (Seedable PRNG)
 │   │   ├── objectives.js       # Formulasi fungsi benchmark 2D (Sphere, Rastrigin, Ackley)
-│   │   └── engine.js           # Pengatur loop animasi requestAnimationFrame & kontrol Play/Step
+│   │   └── engine.js           # Loop animasi requestAnimationFrame & kontrol Play/Step
 │   ├── algorithms/
 │   │   ├── sfla.js             # Mesin status murni Shuffled Frog-Leaping Algorithm (SFLA)
 │   │   ├── wca.js              # Mesin status murni Water Cycle Algorithm (WCA)
 │   │   └── cloudScheduling.js  # Optimizer penjadwalan cloudlet ke VM heterogen (SFLA/WCA/RR)
 │   ├── render/
-│   │   ├── contourRenderer.js  # Renderer peta kontur topografi 2D dengan offscreen caching
-│   │   ├── sflaRenderer.js     # Renderer visualisasi Kolam Teratai, Memeplex, & vektor lompatan
-│   │   ├── wcaRenderer.js      # Renderer visualisasi Laut, Sungai, Aliran, dmax, uap, & hujan
-│   │   └── chart.js            # Renderer grafik konvergensi real-time (1 & 2 seri)
-│   ├── tabs/
-│   │   ├── index.js            # Registri 4 modul tab utama + catatan pemaparan materi
-│   │   ├── tabKonsep.js        # Tab 1: Konsep Optimasi, Eksplorasi Peta Kontur, & Dinamika Agen
-│   │   ├── tabSfla.js          # Tab 2: Laboratorium Simulasi SFLA & Meja Kerja Memeplex/Lompatan
-│   │   ├── tabWca.js           # Tab 3: Laboratorium Simulasi WCA & Meja Kerja NSR/Evaporasi
-│   │   └── tabKomparasi.js     # Tab 4: Arena Head-to-Head, Cloud VM Scheduler, & Matriks Sintesis
+│   │   ├── stage.js            # Panggung scene berkoordinat 1920x1080 & fungsi easing
+│   │   ├── sprites.js          # Gambar vektor: katak, teratai, riak, tetesan, awan, panah, label
+│   │   ├── contourRenderer.js  # Peta kontur 2D dengan offscreen caching
+│   │   ├── sflaRenderer.js     # Visual simulasi SFLA (memeplex, lompatan, riak)
+│   │   ├── wcaRenderer.js      # Visual simulasi WCA (laut, sungai, aliran, dmax, uap, hujan)
+│   │   └── chart.js            # Grafik konvergensi
+│   ├── slides/
+│   │   ├── index.js            # Urutan seluruh slide
+│   │   ├── common.js           # Kerangka scene: kanvas + teks per beat
+│   │   ├── simulation.js       # Slide simulasi nyata yang dipakai SFLA & WCA
+│   │   ├── pembukaSlides.js    # Judul, masalah, metaheuristik
+│   │   ├── sflaSlides.js       # Bab SFLA
+│   │   ├── wcaSlides.js        # Bab WCA
+│   │   └── kasusSlides.js      # Adu, studi kasus cloud, perbandingan, kesimpulan
 │   ├── ui/
-│   │   └── navigation.js       # WorkspaceController (router tab, URL hash, pintasan keyboard)
+│   │   └── navigation.js       # DeckController (slide, beat, bilah progres, keyboard)
 │   └── styles/
-│       ├── fonts.css           # Font lokal terbundel (Plus Jakarta Sans & Ubuntu Mono)
-│       └── main.css            # Sistem desain ITS Dark Navy & tata letak responsif anti-slop
+│       ├── fonts.css           # Font lokal terbundel (Inter & JetBrains Mono)
+│       └── main.css            # Sistem visual presentasi
 ├── scripts/
 │   ├── build.mjs               # Skrip pemaket ke public/app.bundle.js dan folder dist/
 │   ├── dev-server.mjs          # Server HTTP statis lokal untuk pengembangan
@@ -299,7 +278,7 @@ Buka alamat `http://127.0.0.1:4173` pada peramban web Anda.
 
 ### Menjalankan Pengujian Otomatis & Build Ulang
 ```bash
-# Menjalankan 15 unit & integration test (determinisme PRNG, konvergensi SFLA/WCA, Cloud VM, & UI 4-Tab)
+# Menjalankan 15 unit & integration test (determinisme PRNG, konvergensi SFLA/WCA, Cloud VM, & seluruh slide)
 npm test
 
 # Menjalankan linter kualitas antarmuka anti-slop (target: 0 FAIL, 0 WARN)
@@ -315,14 +294,17 @@ npm run build
 
 | Tombol | Fungsi Navigasi & Kontrol Simulasi |
 | :---: | :--- |
-| `1` `2` `3` `4` | Berpindah langsung ke **Tab 1 (`#konsep`)**, **Tab 2 (`#sfla`)**, **Tab 3 (`#wca`)**, atau **Tab 4 (`#komparasi`)** |
-| `P` | **Play / Pause** (Mulai atau jeda simulasi utama pada tab yang sedang aktif) |
-| `S` | **Step** (Maju tepat 1 langkah diskrit tahapan algoritma) |
-| `R` | **Reset** (Kembalikan simulasi ke populasi awal sesuai *seed* aktif) |
-| `N` | Buka / tutup laci **Catatan Pemaparan Materi (*Presenter Notes*)** |
-| `F` | Masuk / keluar mode **Layar Penuh (*Fullscreen*)** |
-| `?` / `H` | Buka dialog daftar pintasan keyboard |
-| `Esc` | Tutup laci catatan atau dialog bantuan |
+| `→` `Spasi` `PageDown` | Beat atau slide berikutnya (kompatibel dengan *clicker*) |
+| `←` `PageUp` | Beat atau slide sebelumnya |
+| `Home` `End` | Slide pertama atau terakhir |
+| `1`–`6` | Lompat ke awal bab |
+| `P` | **Play / Pause** simulasi pada slide aktif |
+| `S` | **Step** satu langkah simulasi |
+| `R` | **Reset** simulasi sesuai *seed* aktif |
+| `N` | Buka / tutup **catatan presenter** |
+| `F` | Masuk / keluar **layar penuh** |
+| `?` / `H` | Buka dialog daftar pintasan |
+| `Esc` | Tutup catatan atau dialog |
 
 ---
 
