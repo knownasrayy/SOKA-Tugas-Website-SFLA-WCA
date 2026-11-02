@@ -6,7 +6,7 @@ Mata kuliah Strategi Optimasi Komputasi Awan (SOKA), ITS
 **Isi:**
 
 1. [Persiapan sebelum tampil](#bagian-1-persiapan-sebelum-tampil)
-2. [Narasi per slide](#bagian-2-narasi-per-slide) (16 slide, target 11:15, cadangan 0:45)
+2. [Narasi per slide](#bagian-2-narasi-per-slide) (17 slide, target 11:45, cadangan 0:45)
 3. [Kemungkinan pertanyaan dosen dan jawabannya](#bagian-3-kemungkinan-pertanyaan-dosen-dan-jawabannya)
 4. [Contekan angka](#bagian-4-contekan-angka)
 
@@ -58,6 +58,7 @@ Baris kutipan seperti di bawah ini adalah aksi dan tidak dibaca. Kecepatan bicar
 | 14 | Studi Kasus | 0:55 | 9:10 - 10:05 |
 | 15 | Perbandingan Mekanisme | 0:25 | 10:05 - 10:30 |
 | 16 | Kesimpulan | 0:45 | 10:30 - 11:15 |
+| 17 | Sumber Teori & Pustaka | 0:30 | 11:15 - 11:45 |
 
 ### Slide 1: Judul
 
@@ -237,7 +238,19 @@ Grafik ini dihitung langsung, rata-rata dari 10 beban kerja. Round-Robin 17,39 d
 
 Selisih SFLA dan WCA jauh lebih kecil daripada selisih keduanya dengan Round-Robin. Algoritma terbaik bergantung pada masalahnya. Perlu dicatat, ini demo pada skenario kecil, bukan uji statistik atau uji di cloud sungguhan.
 
-Sekian dari kami. Terima kasih, kami persilakan untuk bertanya.
+### Slide 17: Sumber Acuan Teori & Pustaka
+
+*Durasi 0:30 | Menit 11:15 - 11:45*
+
+Seluruh simulasi dan formulasi komputasi yang kami bangun berlandaskan empat sumber pustaka ilmiah primer:
+1. **SFLA:** mengacu pada paper pendiri Eusuff & Lansey (2003) serta perluasan diskrit Eusuff dkk. (2006) untuk partisi memeplex dan 3 aturan lompatan lokal.
+2. **WCA:** mengacu pada Eskandar dkk. (2012) dan Sadollah dkk. (2015) untuk hierarki aliran, pertukaran peran (*role swap*), serta penguapan adaptif dmax.
+3. **Fungsi Benchmark 2D:** mengacu pada lanskap standar Rastrigin (1974), Ackley (1987), dan Sphere untuk pengujian multimodal.
+4. **Penjadwalan VM Cloud:** mengadopsi model alokasi tugas heterogen dan minimasi makespan dari arsitektur CloudSim oleh Calheiros dkk. (2011).
+
+Sekian presentasi dari kelompok kami. Terima kasih, kami persilakan untuk sesi tanya jawab.
+
+
 
 ---
 

@@ -655,6 +655,131 @@ kbd {
 
 /* ---------- Bilah bawah ---------- */
 
+
+/* ---------- Sumber Acuan Teori & Pustaka ---------- */
+
+.refs-slide {
+  position: absolute;
+  inset: 48px 64px 80px;
+  display: flex;
+  flex-direction: column;
+}
+
+.refs-header {
+  margin-bottom: 20px;
+}
+
+.refs-header .headline {
+  margin: 0;
+  font-family: var(--ff-display);
+  font-size: 56px;
+  font-weight: 800;
+  letter-spacing: -0.022em;
+  color: var(--ink);
+}
+
+.refs-grid {
+  display: grid;
+  flex: 1;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 18px 24px;
+}
+
+.ref-card {
+  display: flex;
+  flex-direction: column;
+  padding: 22px 26px;
+  border-radius: 16px;
+  background: rgba(11, 27, 52, 0.78);
+  border: 1px solid var(--line);
+  animation: copy-in 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.refs-grid article:nth-child(1) { animation-delay: 80ms; }
+.refs-grid article:nth-child(2) { animation-delay: 160ms; }
+.refs-grid article:nth-child(3) { animation-delay: 240ms; }
+.refs-grid article:nth-child(4) { animation-delay: 320ms; }
+
+.ref-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.ref-badge {
+  font-size: 15px;
+  font-weight: 700;
+  padding: 3px 12px;
+  border-radius: 20px;
+  letter-spacing: 0.03em;
+}
+
+.ref-badge-sfla {
+  background: rgba(18, 176, 162, 0.2);
+  color: var(--tosca-light);
+  border: 1px solid rgba(18, 176, 162, 0.5);
+}
+
+.ref-badge-wca {
+  background: rgba(38, 174, 228, 0.2);
+  color: var(--sky-light);
+  border: 1px solid rgba(38, 174, 228, 0.5);
+}
+
+.ref-badge-bench {
+  background: rgba(253, 187, 22, 0.18);
+  color: var(--gold);
+  border: 1px solid rgba(253, 187, 22, 0.5);
+}
+
+.ref-badge-cloud {
+  background: rgba(244, 125, 82, 0.2);
+  color: var(--coral);
+  border: 1px solid rgba(244, 125, 82, 0.5);
+}
+
+.ref-year {
+  color: var(--muted);
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.ref-title {
+  font-size: 27px;
+  font-weight: 800;
+  color: var(--ink);
+  margin: 0 0 10px;
+  letter-spacing: -0.015em;
+}
+
+.ref-citation {
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1.45;
+  margin: 0 0 12px;
+}
+
+.ref-citation em {
+  color: var(--ink);
+  font-style: italic;
+}
+
+.ref-impl {
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid rgba(242, 247, 255, 0.1);
+  font-size: 16px;
+  line-height: 1.4;
+  color: #c4d5ee;
+}
+
+.ref-impl strong {
+  color: var(--ink);
+}
+
 .deck-bar {
   position: absolute;
   right: 0;

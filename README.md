@@ -314,3 +314,6 @@ npm run build
 2. **Eusuff, M., Lansey, K., & Pasha, F. (2006).** *Shuffled frog-leaping algorithm: a memetic meta-heuristic for discrete optimization.* Engineering Optimization, 38(2), 129–154.
 3. **Eskandar, H., Sadollah, A., Bahreininejad, A., & Hamdi, M. (2012).** *Water cycle algorithm – A novel metaheuristic optimization method for solving constrained engineering optimization problems.* Computers & Structures, 110–111, 151–166.
 4. **Sadollah, A., Eskandar, H., Bahreininejad, A., & Kim, J. H. (2015).** *Water cycle algorithm for solving multi-objective optimization problems.* Soft Computing, 19(9), 2587–2603.
+
+5. **Calheiros, R. N., Ranjan, R., Beloglazov, A., De Rose, C. A., & Buyya, R. (2011).** *CloudSim: a toolkit for modeling and simulation of Cloud computing environments.* Software: Practice and Experience, 41(1), 23–50.
+6. **Rastrigin, L. A. (1974) & Ackley, D. H. (1987).** *Extremal control systems & connectionist genetic hillclimbing.* Landasan lanskap fungsi benchmark 2D multimodal.

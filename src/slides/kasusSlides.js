@@ -616,6 +616,81 @@ const REFERENCES_HTML = `
 
 /* ---------- Registri slide ---------- */
 
+
+/* ---------- Slide: Sumber Acuan Teori ---------- */
+
+function mountReferences(container) {
+  container.innerHTML = `
+    <div class="refs-slide" data-ui>
+      <header class="refs-header">
+        <p class="kicker">Landasan Pustaka &amp; Teori Ilmiah</p>
+        <h1 class="headline">Sumber Acuan Teori &amp; Formulasi</h1>
+      </header>
+      <div class="refs-grid">
+        <article class="ref-card">
+          <div class="ref-card-header">
+            <span class="ref-badge ref-badge-sfla">SFLA &middot; Algoritma Memetik</span>
+            <span class="ref-year">2003 &amp; 2006</span>
+          </div>
+          <h2 class="ref-title">Shuffled Frog-Leaping Algorithm</h2>
+          <p class="ref-citation">
+            <strong>Eusuff, M. M., &amp; Lansey, K. E. (2003).</strong> Optimization of water distribution network design using the shuffled frog leaping algorithm. <em>J. Water Resources Planning and Management</em>, 129(3), 210&ndash;225.<br>
+            <strong>Eusuff, M., Lansey, K., &amp; Pasha, F. (2006).</strong> Shuffled frog-leaping algorithm: a memetic meta-heuristic for discrete optimization. <em>Engineering Optimization</em>, 38(2), 129&ndash;154.
+          </p>
+          <div class="ref-impl">
+            <strong>Diadopsi pada:</strong> Pembagian populasi $m$ memeplex (round-robin), 3 aturan lompatan bertingkat $X_w \to X_b \to X_g \to \text{Acak}$, dan pengocokan informasi global (*shuffling*).
+          </div>
+        </article>
+
+        <article class="ref-card">
+          <div class="ref-card-header">
+            <span class="ref-badge ref-badge-wca">WCA &middot; Siklus Hidrologi</span>
+            <span class="ref-year">2012 &amp; 2015</span>
+          </div>
+          <h2 class="ref-title">Water Cycle Algorithm</h2>
+          <p class="ref-citation">
+            <strong>Eskandar, H., Sadollah, A., Bahreininejad, A., &amp; Hamdi, M. (2012).</strong> Water cycle algorithm &ndash; A novel metaheuristic optimization method for solving constrained engineering optimization problems. <em>Computers &amp; Structures</em>, 110&ndash;111, 151&ndash;166.<br>
+            <strong>Sadollah, A., Eskandar, H., Bahreininejad, A., &amp; Kim, J. H. (2015).</strong> Water cycle algorithm for solving multi-objective optimization problems. <em>Soft Computing</em>, 19(9), 2587&ndash;2603.
+          </p>
+          <div class="ref-impl">
+            <strong>Diadopsi pada:</strong> Hierarki 3 kasta (1 Laut, $N_r$ Sungai, Aliran), alokasi proporsional $NS_n$, aliran vektoral $C = 2$ (*overshoot*), *Role Swap*, serta penyusutan radius penguapan $d_{\max}$ dan hujan baru.
+          </div>
+        </article>
+
+        <article class="ref-card">
+          <div class="ref-card-header">
+            <span class="ref-badge ref-badge-bench">Fungsi Benchmark 2D</span>
+            <span class="ref-year">1974 &amp; 1987</span>
+          </div>
+          <h2 class="ref-title">Lanskap Optimasi &amp; Minimum Lokal</h2>
+          <p class="ref-citation">
+            <strong>Rastrigin, L. A. (1974).</strong> <em>Systems of extremal control.</em> Mir, Moscow.<br>
+            <strong>Ackley, D. H. (1987).</strong> <em>A connectionist machine for genetic hillclimbing.</em> Kluwer Academic Publishers.<br>
+            Standard Unimodal Sphere Function ($f(x, y) = x^2 + y^2$).
+          </p>
+          <div class="ref-impl">
+            <strong>Diadopsi pada:</strong> Pengujian kemampuan eksplorasi vs eksploitasi pada fungsi Sphere (kecepatan dasar), Rastrigin (multimodal ekstrem kosinus), dan Ackley (corong sempit).
+          </div>
+        </article>
+
+        <article class="ref-card">
+          <div class="ref-card-header">
+            <span class="ref-badge ref-badge-cloud">Komputasi Awan</span>
+            <span class="ref-year">2011</span>
+          </div>
+          <h2 class="ref-title">Penjadwalan VM &amp; Minimasi Makespan</h2>
+          <p class="ref-citation">
+            <strong>Calheiros, R. N., Ranjan, R., Beloglazov, A., De Rose, C. A., &amp; Buyya, R. (2011).</strong> CloudSim: a toolkit for modeling and simulation of Cloud computing environments. <em>Software: Practice and Experience</em>, 41(1), 23&ndash;50.
+          </p>
+          <div class="ref-impl">
+            <strong>Diadopsi pada:</strong> Pemodelan $n$ Cloudlets ($140&ndash;620\text{ MI}$) ke $m$ VM heterogen ($85&ndash;175\text{ MIPS}$), penugasan diskrit $\lfloor x_i \rfloor + 1$, penyeimbangan beban, dan perbandingan terhadap baseline *Round-Robin*.
+          </div>
+        </article>
+      </div>
+    </div>
+  `;
+}
+
 export const kasusSlides = [
   {
     id: 'adu',
@@ -692,5 +767,19 @@ export const kasusSlides = [
         extraHtml: REFERENCES_HTML
       });
     }
+  },
+  {
+    id: 'sumber-teori',
+    chapter: CHAPTER_END,
+    title: 'Sumber Acuan Teori & Pustaka',
+    notes: `
+      <p>Daftar pustaka acuan primer yang menjadi fondasi matematis dan arsitektural proyek ini:</p>
+      <ul>
+        <li><strong>SFLA:</strong> Eusuff & Lansey (2003) di J. Water Resources Planning and Management untuk model kolam teratai, partisi memeplex, dan 3 aturan lompatan. Serta Eusuff dkk. (2006) untuk optimasi diskrit.</li>
+        <li><strong>WCA:</strong> Eskandar dkk. (2012) di Computers & Structures untuk model hierarki hidrologi (Laut, Sungai, Aliran), alokasi proporsional NS, koefisien aliran C=2, role swap, dan penguapan/presipitasi dmax. Sadollah dkk. (2015) untuk analisis konvergensi lanjutan.</li>
+        <li><strong>Benchmark Multimodal:</strong> Formulasi Sphere, Rastrigin (1974), dan Ackley (1987) untuk pengujian eksplorasi vs eksploitasi.</li>
+        <li><strong>Cloud VM Scheduling:</strong> Pemodelan cloudlet heterogen (MI) ke Virtual Machine (MIPS) dan minimasi Makespan terinspirasi dari arsitektur toolkit CloudSim (Calheiros dkk., 2011).</li>
+      </ul>`,
+    mount: mountReferences
   }
 ];

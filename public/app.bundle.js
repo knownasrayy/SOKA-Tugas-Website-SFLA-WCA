@@ -12,8 +12,7 @@
   __require("main.js");
 })({
   "main.js": function(exports, __require) {
-const {  DeckController  } = __require("ui/navigation.js");
-const {  slides  } = __require("slides/index.js");
+const {  DeckController  } = __require("ui/navigation.js");const {  slides  } = __require("slides/index.js");
 
 if (
   typeof CanvasRenderingContext2D !== 'undefined' &&
@@ -58,8 +57,7 @@ if (document.readyState === 'loading') {
 
 const DECK_WIDTH = 1920;
 const DECK_HEIGHT = 1080;
-const LEAVE_MS = 420;
-class DeckController {
+const LEAVE_MS = 420;class DeckController {
   constructor(slides) {
     this.slides = slides;
     this.index = 0;
@@ -356,20 +354,14 @@ class DeckController {
   exports.DeckController = DeckController;
   },
   "slides/index.js": function(exports, __require) {
-const {  pembukaSlides  } = __require("slides/pembukaSlides.js");
-const {  sflaSlides  } = __require("slides/sflaSlides.js");
-const {  wcaSlides  } = __require("slides/wcaSlides.js");
-const {  kasusSlides  } = __require("slides/kasusSlides.js");
-const slides = [...pembukaSlides, ...sflaSlides, ...wcaSlides, ...kasusSlides];
+const {  pembukaSlides  } = __require("slides/pembukaSlides.js");const {  sflaSlides  } = __require("slides/sflaSlides.js");const {  wcaSlides  } = __require("slides/wcaSlides.js");const {  kasusSlides  } = __require("slides/kasusSlides.js");const slides = [...pembukaSlides, ...sflaSlides, ...wcaSlides, ...kasusSlides];
 
   exports.slides = slides;
   },
   "slides/pembukaSlides.js": function(exports, __require) {
 /**
  * Bab pembuka: judul, masalah penjadwalan cloud, dan alasan memakai metaheuristik.
- */
-const {  clamp01, easeBack, easeOut, lerp, seg  } = __require("render/stage.js");
-const { 
+ */const {  clamp01, easeBack, easeOut, lerp, seg  } = __require("render/stage.js");const { 
   COLORS,
   arcPoint,
   drawArrow,
@@ -381,9 +373,7 @@ const {
   drawStar,
   drawText,
   fillBackground
- } = __require("render/sprites.js");
-const {  mountScene, noise  } = __require("slides/common.js");
-const {  DEFAULT_VMS, computeRoundRobinBaseline, generateCloudTasks  } = __require("algorithms/cloudScheduling.js");
+ } = __require("render/sprites.js");const {  mountScene, noise  } = __require("slides/common.js");const {  DEFAULT_VMS, computeRoundRobinBaseline, generateCloudTasks  } = __require("algorithms/cloudScheduling.js");
 
 const NIGHT_STOPS = ['#03132b', '#071f42', '#03132b'];
 const TEAM_STORAGE_KEY = 'soka_its_team_identity_v2';
@@ -677,8 +667,7 @@ function drawLandscapeScene(ctx, { bt, beat }) {
 
 /* ---------- Registri slide ---------- */
 
-const CHAPTER = { id: 'pembuka', label: 'Pembuka' };
-const pembukaSlides = [
+const CHAPTER = { id: 'pembuka', label: 'Pembuka' };const pembukaSlides = [
   {
     id: 'judul',
     chapter: CHAPTER,
@@ -772,17 +761,9 @@ const pembukaSlides = [
  * Panggung animasi scene presentasi.
  * Scene digambar dalam koordinat tetap 1920x1080 (sama dengan ukuran deck) sehingga tata letak
  * kanvas dan teks DOM selalu sejajar di resolusi apa pun.
- */
-const DECK_W = 1920;
-const DECK_H = 1080;
-const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
-const lerp = (a, b, t) => a + (b - a) * t;
-const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
-const easeOut = (t) => 1 - Math.pow(1 - t, 3);
-const easeBack = (t) => 1 + 2.4 * Math.pow(t - 1, 3) + 1.4 * Math.pow(t - 1, 2);
+ */const DECK_W = 1920;const DECK_H = 1080;const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);const lerp = (a, b, t) => a + (b - a) * t;const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);const easeOut = (t) => 1 - Math.pow(1 - t, 3);const easeBack = (t) => 1 + 2.4 * Math.pow(t - 1, 3) + 1.4 * Math.pow(t - 1, 2);
 
-/** Kemajuan 0..1 (dengan easing) dari sebuah segmen waktu pada garis waktu animasi. */
-function seg(time, start, duration, ease = easeInOut) {
+/** Kemajuan 0..1 (dengan easing) dari sebuah segmen waktu pada garis waktu animasi. */function seg(time, start, duration, ease = easeInOut) {
   return ease(clamp01((time - start) / Math.max(1e-6, duration)));
 }
 
@@ -791,8 +772,7 @@ function seg(time, start, duration, ease = easeInOut) {
  * @param {(ctx: CanvasRenderingContext2D, frame: {t:number, bt:number, beat:number, dt:number}) => void} draw
  *   t = detik sejak scene dibuka, bt = detik sejak beat aktif dimulai, dt = selisih antar-frame.
  * @param {{reducedMotion?: boolean, width?: number, height?: number}} [options]
- */
-function createStage(canvas, draw, { reducedMotion = false, width = DECK_W, height = DECK_H } = {}) {
+ */function createStage(canvas, draw, { reducedMotion = false, width = DECK_W, height = DECK_H } = {}) {
   let rafId = null;
   let startTime = null;
   let beatStart = null;
@@ -857,8 +837,7 @@ function createStage(canvas, draw, { reducedMotion = false, width = DECK_W, heig
 /**
  * Kumpulan gambar vektor Canvas 2D yang dipakai bersama oleh scene dan renderer simulasi:
  * katak, daun teratai, riak, tetesan, awan, bintang optimum, panah, dan label.
- */
-const COLORS = {
+ */const COLORS = {
   ink: '#f2f7ff',
   muted: '#a9bbd6',
   night: '#03132b',
@@ -871,10 +850,7 @@ const COLORS = {
   coral: '#f47d52',
   danger: '#ff6b70',
   blue: '#127bbe'
-};
-const FONT_BODY = '"Inter", sans-serif';
-const FONT_MONO = '"JetBrains Mono", monospace';
-function drawText(ctx, text, x, y, options = {}) {
+};const FONT_BODY = '"Inter", sans-serif';const FONT_MONO = '"JetBrains Mono", monospace';function drawText(ctx, text, x, y, options = {}) {
   const { size = 30, weight = 700, color = COLORS.ink, align = 'left', mono = false, alpha = 1 } = options;
   ctx.save();
   ctx.globalAlpha *= alpha;
@@ -886,8 +862,7 @@ function drawText(ctx, text, x, y, options = {}) {
   ctx.restore();
 }
 
-/** Label di dalam kapsul berwarna; (x, y) adalah titik tengah kapsul. */
-function drawPill(ctx, text, x, y, options = {}) {
+/** Label di dalam kapsul berwarna; (x, y) adalah titik tengah kapsul. */function drawPill(ctx, text, x, y, options = {}) {
   const { size = 28, weight = 700, color = COLORS.night, fill = COLORS.gold, alpha = 1, mono = false } = options;
   ctx.save();
   ctx.globalAlpha *= alpha;
@@ -903,14 +878,12 @@ function drawPill(ctx, text, x, y, options = {}) {
   ctx.textBaseline = 'middle';
   ctx.fillText(text, x, y + 1);
   ctx.restore();
-}
-function fillBackground(ctx, width, height, stops) {
+}function fillBackground(ctx, width, height, stops) {
   const grad = ctx.createLinearGradient(0, 0, 0, height);
   stops.forEach((color, i) => grad.addColorStop(i / Math.max(1, stops.length - 1), color));
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, width, height);
-}
-function drawGlow(ctx, x, y, radius, color) {
+}function drawGlow(ctx, x, y, radius, color) {
   const glow = ctx.createRadialGradient(x, y, 0, x, y, radius);
   glow.addColorStop(0, color);
   glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
@@ -918,8 +891,7 @@ function drawGlow(ctx, x, y, radius, color) {
   ctx.beginPath();
   ctx.arc(x, y, radius, 0, Math.PI * 2);
   ctx.fill();
-}
-function drawCrown(ctx, x, y, size) {
+}function drawCrown(ctx, x, y, size) {
   ctx.save();
   ctx.translate(x, y);
   ctx.beginPath();
@@ -943,8 +915,7 @@ function drawCrown(ctx, x, y, size) {
 /**
  * Katak tampak atas. `size` kira-kira setengah lebar badan, `angle` 0 berarti menghadap ke atas,
  * dan `lift` mengangkat katak dari bayangannya saat melompat.
- */
-function drawFrog(ctx, x, y, size, color, options = {}) {
+ */function drawFrog(ctx, x, y, size, color, options = {}) {
   const { angle = 0, lift = 0, crown = false, alpha = 1, outline = '#04201f', ring = null } = options;
   const airborne = lift > 0.5;
   const legReach = airborne ? 0.62 : 0;
@@ -1023,8 +994,7 @@ function drawFrog(ctx, x, y, size, color, options = {}) {
 
   if (crown) drawCrown(ctx, 0, -size * 1.12, size * 0.56);
   ctx.restore();
-}
-function drawLilyPad(ctx, x, y, radius, rotation = 0, options = {}) {
+}function drawLilyPad(ctx, x, y, radius, rotation = 0, options = {}) {
   const { fill = '#1c8f6d', edge = '#3fc493', flower = false, alpha = 1 } = options;
   ctx.save();
   ctx.globalAlpha *= alpha;
@@ -1076,8 +1046,7 @@ function drawLilyPad(ctx, x, y, radius, rotation = 0, options = {}) {
   ctx.restore();
 }
 
-/** Riak air; `progress` 0..1 membesar sambil memudar. */
-function drawRipple(ctx, x, y, progress, color = '#bff5ea', maxRadius = 60) {
+/** Riak air; `progress` 0..1 membesar sambil memudar. */function drawRipple(ctx, x, y, progress, color = '#bff5ea', maxRadius = 60) {
   if (progress <= 0 || progress >= 1) return;
   ctx.save();
   ctx.strokeStyle = color;
@@ -1093,8 +1062,7 @@ function drawRipple(ctx, x, y, progress, color = '#bff5ea', maxRadius = 60) {
   ctx.restore();
 }
 
-/** Tetesan air; `angle` adalah arah gerak dan ujung lancipnya berada di belakang gerakan. */
-function drawDrop(ctx, x, y, size, color = COLORS.skyLight, options = {}) {
+/** Tetesan air; `angle` adalah arah gerak dan ujung lancipnya berada di belakang gerakan. */function drawDrop(ctx, x, y, size, color = COLORS.skyLight, options = {}) {
   const { angle = Math.PI / 2, outline = '#04213f', alpha = 1 } = options;
   ctx.save();
   ctx.globalAlpha *= alpha;
@@ -1117,8 +1085,7 @@ function drawDrop(ctx, x, y, size, color = COLORS.skyLight, options = {}) {
   ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
   ctx.fill();
   ctx.restore();
-}
-function drawCloud(ctx, x, y, size, color = '#dbe9f8', alpha = 1) {
+}function drawCloud(ctx, x, y, size, color = '#dbe9f8', alpha = 1) {
   ctx.save();
   ctx.globalAlpha *= alpha;
   ctx.translate(x, y);
@@ -1139,8 +1106,7 @@ function drawCloud(ctx, x, y, size, color = '#dbe9f8', alpha = 1) {
   ctx.roundRect(-1.55 * size, 0.06 * size, 3.1 * size, 0.62 * size, 0.3 * size);
   ctx.fill();
   ctx.restore();
-}
-function drawStar(ctx, x, y, size, options = {}) {
+}function drawStar(ctx, x, y, size, options = {}) {
   const { glow = true, alpha = 1 } = options;
   ctx.save();
   ctx.globalAlpha *= alpha;
@@ -1163,8 +1129,7 @@ function drawStar(ctx, x, y, size, options = {}) {
   ctx.restore();
 }
 
-/** Titik pada kurva kuadratik dari `from` ke `to` dengan lengkungan `bend` ke atas. */
-function arcPoint(from, to, bend, p) {
+/** Titik pada kurva kuadratik dari `from` ke `to` dengan lengkungan `bend` ke atas. */function arcPoint(from, to, bend, p) {
   const cx = (from.x + to.x) / 2;
   const cy = (from.y + to.y) / 2 - bend;
   const q = 1 - p;
@@ -1174,8 +1139,7 @@ function arcPoint(from, to, bend, p) {
   };
 }
 
-/** Panah melengkung yang tergambar bertahap sesuai `progress`. */
-function drawArrow(ctx, from, to, options = {}) {
+/** Panah melengkung yang tergambar bertahap sesuai `progress`. */function drawArrow(ctx, from, to, options = {}) {
   const { bend = 0, color = COLORS.ink, width = 4, progress = 1, dashed = false, alpha = 1, head = true } = options;
   if (progress <= 0) return;
   const tip = arcPoint(from, to, bend, progress);
@@ -1207,8 +1171,7 @@ function drawArrow(ctx, from, to, options = {}) {
     ctx.fill();
   }
   ctx.restore();
-}
-function drawCross(ctx, x, y, size, color = COLORS.danger, alpha = 1) {
+}function drawCross(ctx, x, y, size, color = COLORS.danger, alpha = 1) {
   ctx.save();
   ctx.globalAlpha *= alpha;
   ctx.strokeStyle = color;
@@ -1244,8 +1207,7 @@ function drawCross(ctx, x, y, size, color = COLORS.danger, alpha = 1) {
   "slides/common.js": function(exports, __require) {
 /**
  * Kerangka bersama scene presentasi: kanvas layar penuh + teks singkat yang berganti per beat.
- */
-const {  createStage  } = __require("render/stage.js");
+ */const {  createStage  } = __require("render/stage.js");
 
 /**
  * @param {HTMLElement} container
@@ -1256,8 +1218,7 @@ const {  createStage  } = __require("render/stage.js");
  * @param {Function} options.draw - Fungsi gambar kanvas dalam koordinat 1920x1080
  * @param {string[]} [options.steps] - Daftar tahap yang disorot sesuai beat aktif
  * @param {string} [options.extraHtml] - Elemen DOM tambahan di atas kanvas
- */
-function mountScene(container, { reducedMotion, registerHooks }, options) {
+ */function mountScene(container, { reducedMotion, registerHooks }, options) {
   const { kicker, beats, draw, steps, extraHtml = '' } = options;
 
   const stepsHtml = steps
@@ -1301,8 +1262,7 @@ function mountScene(container, { reducedMotion, registerHooks }, options) {
   return () => stage.destroy();
 }
 
-/** Bilangan semu tetap per indeks, agar gambar scene sama setiap kali dibuka. */
-function noise(i) {
+/** Bilangan semu tetap per indeks, agar gambar scene sama setiap kali dibuka. */function noise(i) {
   const v = Math.sin(i * 127.1 + 311.7) * 43758.5453;
   return v - Math.floor(v);
 }
@@ -1315,12 +1275,15 @@ function noise(i) {
  * Mini Studi Kasus Komputasi Awan: Penjadwalan n Tugas ke m Virtual Machine (PRD Bagian 9)
  * Logika murni tanpa DOM — memetakan vektor kontinu X in [0, m)^n menjadi jadwal diskrit VM
  * menggunakan pembulatan bawah floor(X[i]) untuk meminimalkan Makespan.
- */const {  createRng  } = __require("core/rng.js");const DEFAULT_VMS = [
+ */
+const {  createRng  } = __require("core/rng.js");
+const DEFAULT_VMS = [
   { id: 0, name: 'VM-1 (Small)', mips: 85 },
   { id: 1, name: 'VM-2 (Medium)', mips: 115 },
   { id: 2, name: 'VM-3 (Large)', mips: 145 },
   { id: 3, name: 'VM-4 (X-Large)', mips: 175 }
-];function generateCloudTasks(count = 16, seed = 2026) {
+];
+function generateCloudTasks(count = 16, seed = 2026) {
   const rng = createRng(seed);
   return Array.from({ length: count }, (_, idx) => ({
     id: idx + 1,
@@ -1332,7 +1295,8 @@ function noise(i) {
 /**
  * Pemetaan solusi kontinu ke indeks VM diskrit:
  *   vmIndex = clamp(floor(x_i), 0, m - 1)
- */function decodeSchedule(vector, vmCount) {
+ */
+function decodeSchedule(vector, vmCount) {
   const maxIdx = vmCount - 1;
   return vector.map((val) => {
     const idx = Math.floor(val);
@@ -1344,7 +1308,8 @@ function noise(i) {
 
 /**
  * Menghitung waktu eksekusi tiap VM dan nilai Makespan = max(waktu selesai VM).
- */function evaluateSchedule(vector, tasks, vms = DEFAULT_VMS) {
+ */
+function evaluateSchedule(vector, tasks, vms = DEFAULT_VMS) {
   const assignment = decodeSchedule(vector, vms.length);
   const vmLoads = vms.map(() => 0);
   const vmTasks = vms.map(() => []);
@@ -1383,10 +1348,12 @@ function noise(i) {
     imbalanceStd,
     fitness
   };
-}function computeRoundRobinBaseline(tasks, vms = DEFAULT_VMS) {
+}
+function computeRoundRobinBaseline(tasks, vms = DEFAULT_VMS) {
   const rrVector = tasks.map((_, i) => (i % vms.length) + 0.5);
   return evaluateSchedule(rrVector, tasks, vms);
-}class CloudScheduleOptimizer {
+}
+class CloudScheduleOptimizer {
   /**
    * Menjalankan SFLA dan WCA secara paralel pada masalah penjadwalan tugas VM yang sama.
    */
@@ -1642,7 +1609,8 @@ function noise(i) {
 /**
  * Seedable Pseudo-Random Number Generator (Mulberry32)
  * Menjamin hasil simulasi dapat diulang persis sama dengan seed yang sama (F-13 & Kriteria #5).
- */function hashSeed(seedInput) {
+ */
+function hashSeed(seedInput) {
   if (typeof seedInput === 'number' && Number.isFinite(seedInput)) {
     let h = (seedInput | 0) ^ 0x9e3779b9;
     h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
@@ -1656,7 +1624,8 @@ function noise(i) {
     h = Math.imul(h, 16777619);
   }
   return h >>> 0;
-}function createRng(seedInput = 42) {
+}
+function createRng(seedInput = 42) {
   let state = hashSeed(seedInput);
   if (state === 0) state = 0x6d2b79f5;
 
@@ -1703,9 +1672,7 @@ function noise(i) {
 /**
  * Bab SFLA: inspirasi, karakteristik, cara kerja bertahap, dan simulasi nyata.
  * Scene inspirasi & cara kerja adalah ilustrasi; hanya slide simulasi yang menjalankan SFLAEngine.
- */
-const {  clamp01, easeBack, easeOut, lerp, seg  } = __require("render/stage.js");
-const { 
+ */const {  clamp01, easeBack, easeOut, lerp, seg  } = __require("render/stage.js");const { 
   COLORS,
   arcPoint,
   drawArrow,
@@ -1717,12 +1684,7 @@ const {
   drawRipple,
   drawText,
   fillBackground
- } = __require("render/sprites.js");
-const {  MEMEPLEX_COLORS  } = __require("render/sflaRenderer.js");
-const {  mountScene, noise  } = __require("slides/common.js");
-const {  mountSimulation  } = __require("slides/simulation.js");
-const {  SFLAEngine  } = __require("algorithms/sfla.js");
-const {  SFLARenderer  } = __require("render/sflaRenderer.js");
+ } = __require("render/sprites.js");const {  MEMEPLEX_COLORS  } = __require("render/sflaRenderer.js");const {  mountScene, noise  } = __require("slides/common.js");const {  mountSimulation  } = __require("slides/simulation.js");const {  SFLAEngine  } = __require("algorithms/sfla.js");const {  SFLARenderer  } = __require("render/sflaRenderer.js");
 
 const POND_STOPS = ['#04302f', '#06403c', '#052f33'];
 
@@ -1851,8 +1813,7 @@ function drawInspirationScene(ctx, { t, bt, beat }) {
 const CARD_W = 420;
 const CARD_H = 500;
 const CARD_Y = 300;
-const cardX = (i) => 60 + i * (CARD_W + 40);
-function drawCardFrame(ctx, index, bt, title, caption, accent) {
+const cardX = (i) => 60 + i * (CARD_W + 40);function drawCardFrame(ctx, index, bt, title, caption, accent) {
   const appear = seg(bt, index * 0.18, 0.6, easeOut);
   const x = cardX(index);
   ctx.globalAlpha = appear;
@@ -1867,8 +1828,7 @@ function drawCardFrame(ctx, index, bt, title, caption, accent) {
   drawText(ctx, title, x + 32, CARD_Y + CARD_H - 96, { size: 38, weight: 800 });
   drawText(ctx, caption, x + 32, CARD_Y + CARD_H - 46, { size: 27, weight: 500, color: COLORS.muted });
   return x;
-}
-function drawParamChips(ctx, chips, bt, fill) {
+}function drawParamChips(ctx, chips, bt, fill) {
   const total = chips.reduce((sum, chip) => sum + chip.w, 0) + (chips.length - 1) * 22;
   let x = (1920 - total) / 2;
   chips.forEach((chip, i) => {
@@ -2173,8 +2133,7 @@ function drawHowScene(ctx, { t, bt, beat }) {
 
 /* ---------- Registri slide ---------- */
 
-const CHAPTER = { id: 'sfla', label: 'SFLA' };
-const sflaSlides = [
+const CHAPTER = { id: 'sfla', label: 'SFLA' };const sflaSlides = [
   {
     id: 'sfla-inspirasi',
     chapter: CHAPTER,
@@ -2295,10 +2254,7 @@ const sflaSlides = [
  * Menggunakan Palet Resmi ITS: FKK Medical Tosca (#12B0A2), Kuning Tua ITS (#FDBB16),
  * FTK Summer Sky (#26AEE4), FV Crusta (#F47D52), dan Biru Muda ITS (#75BDE0).
  * Seluruh ukuran mengikuti faktor `u` dari ukuran kanvas agar konsisten di layar apa pun.
- */
-const {  ContourMapCache, syncCanvasSize  } = __require("render/contourRenderer.js");
-const {  COLORS, arcPoint, drawArrow, drawCross, drawFrog, drawPill, drawRipple  } = __require("render/sprites.js");
-const MEMEPLEX_COLORS = [
+ */const {  ContourMapCache, syncCanvasSize  } = __require("render/contourRenderer.js");const {  COLORS, arcPoint, drawArrow, drawCross, drawFrog, drawPill, drawRipple  } = __require("render/sprites.js");const MEMEPLEX_COLORS = [
   '#3fe0c5', // M1: Tosca terang
   '#ffb0d0', // M2: Merah muda teratai
   '#7fd0ff', // M3: FTK Summer Sky terang
@@ -2317,8 +2273,7 @@ const JUMP_STYLES = {
 
 function memeplexColor(index) {
   return index >= 0 ? MEMEPLEX_COLORS[index % MEMEPLEX_COLORS.length] : '#bfe6df';
-}
-class SFLARenderer {
+}class SFLARenderer {
   constructor() {
     this.contourCache = new ContourMapCache();
   }
@@ -2668,25 +2623,19 @@ const PALETTES = {
  * Slide simulasi nyata yang dipakai bersama oleh SFLA dan WCA:
  * peta kontur besar di kiri, tahap aktif + nilai terbaik + grafik konvergensi di kanan,
  * dan panel parameter yang bisa disembunyikan agar layar tetap bersih saat presentasi.
- */
-const {  getObjective  } = __require("core/objectives.js");
-const {  SimulationRunner  } = __require("core/engine.js");
-const {  renderConvergenceChart  } = __require("render/chart.js");
+ */const {  getObjective  } = __require("core/objectives.js");const {  SimulationRunner  } = __require("core/engine.js");const {  renderConvergenceChart  } = __require("render/chart.js");
 
 const OBJECTIVE_BUTTONS = [
   { id: 'rastrigin', label: 'Rastrigin' },
   { id: 'ackley', label: 'Ackley' },
   { id: 'sphere', label: 'Sphere' }
-];
-function formatFitness(value) {
+];function formatFitness(value) {
   return value < 0.001 && value > 0 ? value.toExponential(2) : value.toFixed(3);
-}
-function objectiveButtonsHtml(activeId) {
+}function objectiveButtonsHtml(activeId) {
   return OBJECTIVE_BUTTONS.map(
     (obj) => `<button type="button" class="seg-btn${obj.id === activeId ? ' active' : ''}" data-obj="${obj.id}">${obj.label}</button>`
   ).join('');
-}
-function mountSimulation(container, { reducedMotion, registerHooks }, spec) {
+}function mountSimulation(container, { reducedMotion, registerHooks }, spec) {
   const { idPrefix: id, title, kicker, color, fillFlat, Engine, renderer, bestOf, bestLabel, phases, params } = spec;
   const MAX_ITERATIONS = 40;
   const DEFAULT_SPEED = 1.5;
@@ -2874,7 +2823,8 @@ function mountSimulation(container, { reducedMotion, registerHooks }, spec) {
  * Semua fungsi diminimalkan menuju nilai global minimum f(0, 0) = 0.
  */
 
-const TWO_PI = 2 * Math.PI;const OBJECTIVES = {
+const TWO_PI = 2 * Math.PI;
+const OBJECTIVES = {
   sphere: {
     id: 'sphere',
     name: 'Sphere',
@@ -2923,9 +2873,11 @@ const TWO_PI = 2 * Math.PI;const OBJECTIVES = {
       return val < 1e-14 ? 0 : val;
     }
   }
-};function getObjective(id) {
+};
+function getObjective(id) {
   return OBJECTIVES[id] || OBJECTIVES.sphere;
-}function clampCoord(val, min, max) {
+}
+function clampCoord(val, min, max) {
   if (val < min) return min;
   if (val > max) return max;
   return val;
@@ -2941,7 +2893,8 @@ const TWO_PI = 2 * Math.PI;const OBJECTIVES = {
  * Mesin Loop Animasi Presentasi (PRD Bagian 12 & 13)
  * Memisahkan detak logika algoritma (play/pause/step) dari loop rendering 60 FPS (requestAnimationFrame)
  * dengan interpolasi posisi halus antar langkah diskrit.
- */class SimulationRunner {
+ */
+class SimulationRunner {
   /**
    * @param {Object} options
    * @param {Function} options.onStep - Dipanggil saat 1 langkah algoritma dieksekusi; mengembalikan apakah sudah selesai ('DONE')
@@ -3053,16 +3006,14 @@ const TWO_PI = 2 * Math.PI;const OBJECTIVES = {
 /**
  * Grafik Konvergensi Fitness Terbaik per Iterasi
  * Ukuran huruf dan garis mengikuti ukuran kanvas agar tetap terbaca dari jarak jauh saat diproyeksikan.
- */
-const {  syncCanvasSize  } = __require("render/contourRenderer.js");
+ */const {  syncCanvasSize  } = __require("render/contourRenderer.js");
 
 function formatTick(val) {
   if (val === 0) return '0';
   if (val >= 10) return val.toFixed(0);
   if (val >= 0.1) return val.toFixed(1);
   return val.toExponential(0);
-}
-function renderConvergenceChart(canvas, seriesList, options = {}) {
+}function renderConvergenceChart(canvas, seriesList, options = {}) {
   if (!canvas) return;
   const { ctx, width, height } = syncCanvasSize(canvas);
   ctx.clearRect(0, 0, width, height);
@@ -3155,7 +3106,10 @@ function renderConvergenceChart(canvas, seriesList, options = {}) {
  *
  * Urutan event tahap (Acceptance Criterion #2):
  *   INIT -> SORT -> PARTITION -> LOCAL_JUMP (x N) -> SHUFFLE -> PARTITION -> ... -> DONE
- */const {  createRng  } = __require("core/rng.js");const {  clampCoord  } = __require("core/objectives.js");class SFLAEngine {
+ */
+const {  createRng  } = __require("core/rng.js");
+const {  clampCoord  } = __require("core/objectives.js");
+class SFLAEngine {
   /**
    * @param {Object} config
    * @param {Object} config.objective - Objek fungsi objektif { evaluate(x,y), min, max }
@@ -3568,9 +3522,7 @@ function renderConvergenceChart(canvas, seriesList, options = {}) {
 /**
  * Bab WCA: inspirasi, karakteristik, cara kerja bertahap, dan simulasi nyata.
  * Scene inspirasi & cara kerja adalah ilustrasi; hanya slide simulasi yang menjalankan WCAEngine.
- */
-const {  clamp01, easeBack, lerp, seg  } = __require("render/stage.js");
-const { 
+ */const {  clamp01, easeBack, lerp, seg  } = __require("render/stage.js");const { 
   COLORS,
   arcPoint,
   drawArrow,
@@ -3581,12 +3533,7 @@ const {
   drawRipple,
   drawText,
   fillBackground
- } = __require("render/sprites.js");
-const {  WCARenderer, drawRiverMarker, drawSeaMarker  } = __require("render/wcaRenderer.js");
-const {  mountScene, noise  } = __require("slides/common.js");
-const {  drawCardFrame, drawParamChips  } = __require("slides/sflaSlides.js");
-const {  mountSimulation  } = __require("slides/simulation.js");
-const {  WCAEngine  } = __require("algorithms/wca.js");
+ } = __require("render/sprites.js");const {  WCARenderer, drawRiverMarker, drawSeaMarker  } = __require("render/wcaRenderer.js");const {  mountScene, noise  } = __require("slides/common.js");const {  drawCardFrame, drawParamChips  } = __require("slides/sflaSlides.js");const {  mountSimulation  } = __require("slides/simulation.js");const {  WCAEngine  } = __require("algorithms/wca.js");
 
 const SKY_STOPS = ['#06234f', '#0b3a73', '#12558f'];
 const DEEP_STOPS = ['#031a3d', '#052a58', '#04254e'];
@@ -4054,8 +4001,7 @@ function drawHowScene(ctx, { t, bt, beat }) {
 
 /* ---------- Registri slide ---------- */
 
-const CHAPTER = { id: 'wca', label: 'WCA' };
-const wcaSlides = [
+const CHAPTER = { id: 'wca', label: 'WCA' };const wcaSlides = [
   {
     id: 'wca-inspirasi',
     chapter: CHAPTER,
@@ -4173,10 +4119,7 @@ const wcaSlides = [
  * Menggunakan Palet Resmi ITS: Biru Tua Lambang (#127BBE), FTK Summer Sky (#26AEE4),
  * Biru Muda Lambang (#75BDE0), dan Kuning Tua ITS (#FDBB16) untuk titik Laut terbaik.
  * Seluruh ukuran mengikuti faktor `u` dari ukuran kanvas agar konsisten di layar apa pun.
- */
-const {  ContourMapCache, syncCanvasSize  } = __require("render/contourRenderer.js");
-const {  COLORS, drawCloud, drawDrop, drawGlow, drawPill, drawText  } = __require("render/sprites.js");
-function drawSeaMarker(ctx, x, y, size, time = 0) {
+ */const {  ContourMapCache, syncCanvasSize  } = __require("render/contourRenderer.js");const {  COLORS, drawCloud, drawDrop, drawGlow, drawPill, drawText  } = __require("render/sprites.js");function drawSeaMarker(ctx, x, y, size, time = 0) {
   drawGlow(ctx, x, y, size * 2.6, 'rgba(253, 187, 22, 0.42)');
   ctx.save();
   ctx.beginPath();
@@ -4200,8 +4143,7 @@ function drawSeaMarker(ctx, x, y, size, time = 0) {
     ctx.stroke();
   }
   ctx.restore();
-}
-function drawRiverMarker(ctx, x, y, size, label = '') {
+}function drawRiverMarker(ctx, x, y, size, label = '') {
   drawGlow(ctx, x, y, size * 2, 'rgba(38, 174, 228, 0.5)');
   ctx.save();
   ctx.beginPath();
@@ -4218,8 +4160,7 @@ function drawRiverMarker(ctx, x, y, size, label = '') {
   ctx.stroke();
   ctx.restore();
   if (label) drawText(ctx, label, x, y + 1, { size: size * 0.82, weight: 800, color: COLORS.night, align: 'center' });
-}
-class WCARenderer {
+}class WCARenderer {
   constructor() {
     this.contourCache = new ContourMapCache();
   }
@@ -4389,7 +4330,10 @@ class WCARenderer {
  *
  * Urutan event tahap (Acceptance Criterion #3):
  *   INIT -> HIERARCHY -> FLOW -> ROLE_SWAP -> EVAPORATION -> RAIN -> FLOW -> ... -> DONE
- */const {  createRng  } = __require("core/rng.js");const {  clampCoord  } = __require("core/objectives.js");class WCAEngine {
+ */
+const {  createRng  } = __require("core/rng.js");
+const {  clampCoord  } = __require("core/objectives.js");
+class WCAEngine {
   /**
    * @param {Object} config
    * @param {Object} config.objective - Objek fungsi objektif { evaluate(x,y), min, max }
@@ -4844,25 +4788,12 @@ class WCARenderer {
 /**
  * Bab perbandingan & studi kasus: adu SFLA vs WCA pada peta yang sama, pemetaan solusi ke jadwal,
  * penjadwalan 16 tugas ke 4 VM, serta kesimpulan. Semua angka dihitung langsung dari mesin algoritma.
- */
-const {  createRng  } = __require("core/rng.js");
-const {  getObjective  } = __require("core/objectives.js");
-const {  SimulationRunner  } = __require("core/engine.js");
-const {  SFLAEngine  } = __require("algorithms/sfla.js");
-const {  WCAEngine  } = __require("algorithms/wca.js");
-const { 
+ */const {  createRng  } = __require("core/rng.js");const {  getObjective  } = __require("core/objectives.js");const {  SimulationRunner  } = __require("core/engine.js");const {  SFLAEngine  } = __require("algorithms/sfla.js");const {  WCAEngine  } = __require("algorithms/wca.js");const { 
   CloudScheduleOptimizer,
   DEFAULT_VMS,
   evaluateSchedule,
   generateCloudTasks
- } = __require("algorithms/cloudScheduling.js");
-const {  renderConvergenceChart  } = __require("render/chart.js");
-const {  SFLARenderer  } = __require("render/sflaRenderer.js");
-const {  WCARenderer  } = __require("render/wcaRenderer.js");
-const {  createStage, easeOut, lerp, seg  } = __require("render/stage.js");
-const {  COLORS, arcPoint, drawDrop, drawFrog, drawPill, drawText, fillBackground  } = __require("render/sprites.js");
-const {  mountScene  } = __require("slides/common.js");
-const {  formatFitness, objectiveButtonsHtml  } = __require("slides/simulation.js");
+ } = __require("algorithms/cloudScheduling.js");const {  renderConvergenceChart  } = __require("render/chart.js");const {  SFLARenderer  } = __require("render/sflaRenderer.js");const {  WCARenderer  } = __require("render/wcaRenderer.js");const {  createStage, easeOut, lerp, seg  } = __require("render/stage.js");const {  COLORS, arcPoint, drawDrop, drawFrog, drawPill, drawText, fillBackground  } = __require("render/sprites.js");const {  mountScene  } = __require("slides/common.js");const {  formatFitness, objectiveButtonsHtml  } = __require("slides/simulation.js");
 
 const CHAPTER_DUEL = { id: 'adu', label: 'Perbandingan' };
 const CHAPTER_CASE = { id: 'kasus', label: 'Studi kasus' };
@@ -5457,7 +5388,81 @@ const REFERENCES_HTML = `
   </ol>`;
 
 /* ---------- Registri slide ---------- */
-const kasusSlides = [
+
+
+/* ---------- Slide: Sumber Acuan Teori ---------- */
+
+function mountReferences(container) {
+  container.innerHTML = `
+    <div class="refs-slide" data-ui>
+      <header class="refs-header">
+        <p class="kicker">Landasan Pustaka &amp; Teori Ilmiah</p>
+        <h1 class="headline">Sumber Acuan Teori &amp; Formulasi</h1>
+      </header>
+      <div class="refs-grid">
+        <article class="ref-card">
+          <div class="ref-card-header">
+            <span class="ref-badge ref-badge-sfla">SFLA &middot; Algoritma Memetik</span>
+            <span class="ref-year">2003 &amp; 2006</span>
+          </div>
+          <h2 class="ref-title">Shuffled Frog-Leaping Algorithm</h2>
+          <p class="ref-citation">
+            <strong>Eusuff, M. M., &amp; Lansey, K. E. (2003).</strong> Optimization of water distribution network design using the shuffled frog leaping algorithm. <em>J. Water Resources Planning and Management</em>, 129(3), 210&ndash;225.<br>
+            <strong>Eusuff, M., Lansey, K., &amp; Pasha, F. (2006).</strong> Shuffled frog-leaping algorithm: a memetic meta-heuristic for discrete optimization. <em>Engineering Optimization</em>, 38(2), 129&ndash;154.
+          </p>
+          <div class="ref-impl">
+            <strong>Diadopsi pada:</strong> Pembagian populasi $m$ memeplex (round-robin), 3 aturan lompatan bertingkat $X_w \to X_b \to X_g \to \text{Acak}$, dan pengocokan informasi global (*shuffling*).
+          </div>
+        </article>
+
+        <article class="ref-card">
+          <div class="ref-card-header">
+            <span class="ref-badge ref-badge-wca">WCA &middot; Siklus Hidrologi</span>
+            <span class="ref-year">2012 &amp; 2015</span>
+          </div>
+          <h2 class="ref-title">Water Cycle Algorithm</h2>
+          <p class="ref-citation">
+            <strong>Eskandar, H., Sadollah, A., Bahreininejad, A., &amp; Hamdi, M. (2012).</strong> Water cycle algorithm &ndash; A novel metaheuristic optimization method for solving constrained engineering optimization problems. <em>Computers &amp; Structures</em>, 110&ndash;111, 151&ndash;166.<br>
+            <strong>Sadollah, A., Eskandar, H., Bahreininejad, A., &amp; Kim, J. H. (2015).</strong> Water cycle algorithm for solving multi-objective optimization problems. <em>Soft Computing</em>, 19(9), 2587&ndash;2603.
+          </p>
+          <div class="ref-impl">
+            <strong>Diadopsi pada:</strong> Hierarki 3 kasta (1 Laut, $N_r$ Sungai, Aliran), alokasi proporsional $NS_n$, aliran vektoral $C = 2$ (*overshoot*), *Role Swap*, serta penyusutan radius penguapan $d_{\max}$ dan hujan baru.
+          </div>
+        </article>
+
+        <article class="ref-card">
+          <div class="ref-card-header">
+            <span class="ref-badge ref-badge-bench">Fungsi Benchmark 2D</span>
+            <span class="ref-year">1974 &amp; 1987</span>
+          </div>
+          <h2 class="ref-title">Lanskap Optimasi &amp; Minimum Lokal</h2>
+          <p class="ref-citation">
+            <strong>Rastrigin, L. A. (1974).</strong> <em>Systems of extremal control.</em> Mir, Moscow.<br>
+            <strong>Ackley, D. H. (1987).</strong> <em>A connectionist machine for genetic hillclimbing.</em> Kluwer Academic Publishers.<br>
+            Standard Unimodal Sphere Function ($f(x, y) = x^2 + y^2$).
+          </p>
+          <div class="ref-impl">
+            <strong>Diadopsi pada:</strong> Pengujian kemampuan eksplorasi vs eksploitasi pada fungsi Sphere (kecepatan dasar), Rastrigin (multimodal ekstrem kosinus), dan Ackley (corong sempit).
+          </div>
+        </article>
+
+        <article class="ref-card">
+          <div class="ref-card-header">
+            <span class="ref-badge ref-badge-cloud">Komputasi Awan</span>
+            <span class="ref-year">2011</span>
+          </div>
+          <h2 class="ref-title">Penjadwalan VM &amp; Minimasi Makespan</h2>
+          <p class="ref-citation">
+            <strong>Calheiros, R. N., Ranjan, R., Beloglazov, A., De Rose, C. A., &amp; Buyya, R. (2011).</strong> CloudSim: a toolkit for modeling and simulation of Cloud computing environments. <em>Software: Practice and Experience</em>, 41(1), 23&ndash;50.
+          </p>
+          <div class="ref-impl">
+            <strong>Diadopsi pada:</strong> Pemodelan $n$ Cloudlets ($140&ndash;620\text{ MI}$) ke $m$ VM heterogen ($85&ndash;175\text{ MIPS}$), penugasan diskrit $\lfloor x_i \rfloor + 1$, penyeimbangan beban, dan perbandingan terhadap baseline *Round-Robin*.
+          </div>
+        </article>
+      </div>
+    </div>
+  `;
+}const kasusSlides = [
   {
     id: 'adu',
     chapter: CHAPTER_DUEL,
@@ -5533,6 +5538,20 @@ const kasusSlides = [
         extraHtml: REFERENCES_HTML
       });
     }
+  },
+  {
+    id: 'sumber-teori',
+    chapter: CHAPTER_END,
+    title: 'Sumber Acuan Teori & Pustaka',
+    notes: `
+      <p>Daftar pustaka acuan primer yang menjadi fondasi matematis dan arsitektural proyek ini:</p>
+      <ul>
+        <li><strong>SFLA:</strong> Eusuff & Lansey (2003) di J. Water Resources Planning and Management untuk model kolam teratai, partisi memeplex, dan 3 aturan lompatan. Serta Eusuff dkk. (2006) untuk optimasi diskrit.</li>
+        <li><strong>WCA:</strong> Eskandar dkk. (2012) di Computers & Structures untuk model hierarki hidrologi (Laut, Sungai, Aliran), alokasi proporsional NS, koefisien aliran C=2, role swap, dan penguapan/presipitasi dmax. Sadollah dkk. (2015) untuk analisis konvergensi lanjutan.</li>
+        <li><strong>Benchmark Multimodal:</strong> Formulasi Sphere, Rastrigin (1974), dan Ackley (1987) untuk pengujian eksplorasi vs eksploitasi.</li>
+        <li><strong>Cloud VM Scheduling:</strong> Pemodelan cloudlet heterogen (MI) ke Virtual Machine (MIPS) dan minimasi Makespan terinspirasi dari arsitektur toolkit CloudSim (Calheiros dkk., 2011).</li>
+      </ul>`,
+    mount: mountReferences
   }
 ];
 
