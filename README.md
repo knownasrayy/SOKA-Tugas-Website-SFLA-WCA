@@ -221,6 +221,9 @@ Pada slide **`#kasus-run`**, algoritma statis **Round-Robin** ($a_i = (i \bmod m
 
 ```text
 ├── index.html                  # Shell deck (panggung 1920x1080, bilah progres, catatan, pintasan)
+├── narasi-presentasi.md        # Naskah presentasi 17 slide, durasi, dan antisipasi tanya jawab
+├── eusuff-lansey-2003-*.pdf    # Paper primer asli SFLA (Eusuff & Lansey, ASCE 2003)
+├── Watercyclealgorithm*.pdf    # Paper primer asli WCA (Eskandar dkk., Elsevier 2012)
 ├── public/
 │   └── app.bundle.js           # Bundel produksi mandiri untuk eksekusi langsung via file://
 ├── src/
@@ -309,6 +312,14 @@ npm run build
 ---
 
 ## 8. Referensi Ilmiah
+
+### A. Berkas Paper Jurnal Asli di Repositori
+- 📄 [**eusuff-lansey-2003-optimization-of-water-distribution-network-design-using-the-shuffled-frog-leaping-algorithm.pdf**](./eusuff-lansey-2003-optimization-of-water-distribution-network-design-using-the-shuffled-frog-leaping-algorithm.pdf)  
+  *Paper penemu SFLA*: Muzaffar M. Eusuff & Kevin E. Lansey (2003). Memuat landasan matematis partisi *memeplex*, 3 aturan lompatan bertingkat ($X_w \to X_b \to X_g \to \text{Acak}$), dan *shuffling* global.
+- 📄 [**WatercyclealgorithmAnovelmetaheuristcoptimizationmethod.pdf**](./WatercyclealgorithmAnovelmetaheuristcoptimizationmethod.pdf)  
+  *Paper penemu WCA*: Hadi Eskandar, Ali Sadollah, Ardeshir Bahreininejad, & Mohd Hamdi (2012). Memuat formulasi kasta hidrologi (Laut, Sungai, Aliran), alokasi aliran proporsional $NS_n$, aliran vektoral dengan koefisien $C=2$ (*overshoot*), *Role Swap*, serta penguapan $d_{\max}$ dan hujan.
+
+### B. Daftar Pustaka Lengkap
 
 1. **Eusuff, M. M., & Lansey, K. E. (2003).** *Optimization of water distribution network design using the shuffled frog leaping algorithm.* Journal of Water Resources Planning and Management, 129(3), 210–225.
 2. **Eusuff, M., Lansey, K., & Pasha, F. (2006).** *Shuffled frog-leaping algorithm: a memetic meta-heuristic for discrete optimization.* Engineering Optimization, 38(2), 129–154.
